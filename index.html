@@ -424,7 +424,7 @@ function App() {
             if (t.performed === "Yes") {
               overrides[idx] = {s:3, f:t.freq||"TBD", t:t.tool||"TBD", m:t.mode||"Manual", w:t.where||""};
             } else if (t.performed === "No") {
-              overrides[idx] = {s:1, f:"Not performed", t:"\u2014", m:"\u2014"};
+              overrides[idx] = {s:1, f:"Not performed", t:"—", m:"—"};
             }
           }
         });
@@ -439,7 +439,7 @@ function App() {
           plant: parsed.plantName,
           file: file.name,
           date: new Date().toLocaleString(),
-          by: parsed.completedBy || "\u2014",
+          by: parsed.completedBy || "—",
           testsPerformed: parsed.tests.filter(t => t.performed === "Yes").length,
           testsTotal: parsed.tests.length
         }]);
@@ -1164,7 +1164,7 @@ function App() {
           <div style={{background:"#fff",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)",border:"2px solid "+BLUE}}>
             <div style={{fontWeight:700,fontSize:14,color:BLUE,marginBottom:4}}>Import QC Test Data from Excel</div>
             <p style={{fontSize:12,color:"#666",marginBottom:16}}>
-              Drop a completed <strong>Mirror_QC_Plant_Request_Form</strong> file here. The parser reads Plant_Identification and QC_Test_Review tabs, detects the plant, and overlays the data on the dashboard in real-time. This does not modify the HTML file itself \u2014 it is a runtime overlay.
+              Drop a completed <strong>Mirror_QC_Plant_Request_Form</strong> file here. The parser reads Plant_Identification and QC_Test_Review tabs, detects the plant, and overlays the data on the dashboard in real-time. This does not modify the HTML file itself — it is a runtime overlay.
             </p>
             <div onDragOver={(e)=>{e.preventDefault();setQcDragOver(true);}} onDragLeave={()=>setQcDragOver(false)}
               onDrop={(e)=>{e.preventDefault();setQcDragOver(false);const f=e.dataTransfer.files;if(f.length)handleQCFile(f[0]);}}
@@ -1185,7 +1185,7 @@ function App() {
                       <span style={{fontWeight:700,fontSize:12,color:NAVY}}>{l.plant} ({l.id})</span>
                       <span style={{fontSize:11,color:"#888",marginLeft:8}}>{l.testsPerformed} tests performed</span>
                     </div>
-                    <span style={{fontSize:11,color:"#999"}}>{l.file} \u00B7 {l.date}</span>
+                    <span style={{fontSize:11,color:"#999"}}>{l.file} · {l.date}</span>
                   </div>
                 ))}
               </div>
@@ -1407,7 +1407,7 @@ function App() {
                     <div style={{background:pathBg,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
                         <div style={{fontWeight:800,fontSize:15,color:"#333"}}>{p.name}</div>
-                        <div style={{fontSize:11,color:"#666",marginTop:2}}>{p.region} \u00B7 {p.system}</div>
+                        <div style={{fontSize:11,color:"#666",marginTop:2}}>{p.region} · {p.system}</div>
                       </div>
                       <span style={{fontSize:28}}>{icon}</span>
                     </div>
@@ -1431,12 +1431,12 @@ function App() {
                           <strong style={{color:"#7C3AED"}}>{"\uD83E\uDDE0"} AI Insight:</strong><br/>
                           {isGpis && <>
                             {gpisTests}/{plantTests} tests recorded in GPIS.
-                            {excelTests > 0 && <> {excelTests} test(s) still in Excel \u2014 need migration plan.</>}
-                            {gpisTests === plantTests && <> All tests in GPIS \u2014 <strong style={{color:GREEN}}>clean Path A candidate</strong>.</>}
-                            {gpisTests < plantTests && gpisTests > 0 && <> Majority in GPIS but some gaps \u2014 <strong style={{color:YELLOW}}>Path A with Excel migration needed</strong>.</>}
+                            {excelTests > 0 && <> {excelTests} test(s) still in Excel — need migration plan.</>}
+                            {gpisTests === plantTests && <> All tests in GPIS — <strong style={{color:GREEN}}>clean Path A candidate</strong>.</>}
+                            {gpisTests < plantTests && gpisTests > 0 && <> Majority in GPIS but some gaps — <strong style={{color:YELLOW}}>Path A with Excel migration needed</strong>.</>}
                           </>}
                           {isNo && <>
-                            No GPIS usage. {excelTests > 0 ? excelTests + " tests in Excel/local apps." : ""} <strong style={{color:YELLOW}}>Full Path B build required</strong> \u2014 all {plantTests} tests need M3 QI configuration from scratch.
+                            No GPIS usage. {excelTests > 0 ? excelTests + " tests in Excel/local apps." : ""} <strong style={{color:YELLOW}}>Full Path B build required</strong> — all {plantTests} tests need M3 QI configuration from scratch.
                           </>}
                           {isTBD && <>
                             Awaiting plant response. Cannot determine integration path yet.
