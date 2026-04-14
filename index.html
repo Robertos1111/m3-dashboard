@@ -7,7 +7,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx-js-style: SheetJS fork with styling support (colors, borders, fonts).
+     Drop-in API-compatible with XLSX — used for both reading plant input files and writing styled exports. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #F8FAFC; }
@@ -655,172 +657,393 @@ function App() {
     downloadFile(tsv, "M3_QI_Config_" + selectedPlant + ".xls", "application/vnd.ms-excel");
   };
 
-  // Professional multi-sheet Excel export using XLSX library
+  // Professional multi-sheet Excel export with full styling (colors, borders, badges, zebra rows)
+  // Uses xlsx-js-style (SheetJS fork with styling support).
   const exportExcelPro = () => {
     const wb = XLSX.utils.book_new();
     const today = new Date().toISOString().slice(0,10);
     const plantName = currentPlant.name;
-
-    // Helper: apply styles to a sheet
-    const setColWidths = (ws, widths) => { ws["!cols"] = widths.map(w => ({wch: w})); };
-    const setMerges = (ws, merges) => { ws["!merges"] = merges; };
-
-    // === SHEET 1: COVER / SUMMARY ===
-    const coverData = [
-      ["GlobalCore M3 — Mirror/Wet Coater Readiness Dashboard"],
-      ["QI Configuration Export — " + plantName],
-      [],
-      ["Export Date:", today],
-      ["Dashboard Version:", DASHBOARD_VERSION],
-      ["Plant:", plantName],
-      ["Plant ID:", selectedPlant],
-      ["Region:", currentPlant.region],
-      ["System:", currentPlant.system],
-      ["GPIS Used:", currentPlant.gpisUsed],
-      ["Integration Path:", isPathA ? "Path A (GPIS → M3 WCO001 PASS/FAIL)" : "Path B (Full M3 QI Request)"],
-      ["QI Request Frequency:", isPathA ? (qiFreqA[selectedPlant]||"TBD") : (qiFreqB[selectedPlant]||"TBD")],
-      ["Data Owner:", "Robert Skowron, Global Quality SME"],
-      [],
-      ["—— Configuration Summary ——"],
-    ];
     const pcfg = qiConfigs[selectedPlant];
     const pcfgTests = (pcfg && pcfg.tests) ? pcfg.tests : {};
+
+    // ── Brand palette (matches dashboard) ──
+    const C = {
+      navy:"1F4E79", blue:"2E75B6", green:"27AE60", yellow:"F39C12", red:"E74C3C",
+      white:"FFFFFF", bgAlt:"FAFBFC", headerBg:"F1F5F9", border:"E2E8F0", borderSoft:"EEF2F7",
+      qualBg:"E0E7FF", qualFg:"3730A3",
+      quanBg:"DCFCE7", quanFg:"166534",
+      numBg:"FEF3C7",  numFg:"92400E",
+      passBg:"DCFCE7", passFg:"16A34A",
+      failBg:"FEE2E2", failFg:"DC2626",
+      infoBg:"EFF6FF", warnBg:"FFFBEB", mutedFg:"94A3B8"
+    };
+    const thin = (col) => ({ style:"thin", color:{rgb: col || C.border} });
+    const med  = (col) => ({ style:"medium", color:{rgb: col || C.blue} });
+    const borderAll = (col) => ({ top:thin(col), bottom:thin(col), left:thin(col), right:thin(col) });
+    const s = {
+      title:     { font:{ bold:true, sz:16, color:{rgb:C.white} }, fill:{ fgColor:{rgb:C.navy} }, alignment:{ horizontal:"left", vertical:"center", indent:1 }, border:borderAll(C.navy) },
+      subtitle:  { font:{ bold:true, sz:11, color:{rgb:C.white} }, fill:{ fgColor:{rgb:C.blue} }, alignment:{ horizontal:"left", vertical:"center", indent:1 } },
+      sectionHd: { font:{ bold:true, sz:12, color:{rgb:C.navy} }, fill:{ fgColor:{rgb:C.headerBg} }, alignment:{ horizontal:"left", vertical:"center", indent:1 }, border:{ bottom:med(C.blue) } },
+      tableHdr:  { font:{ bold:true, sz:11, color:{rgb:C.navy} }, fill:{ fgColor:{rgb:C.headerBg} }, alignment:{ horizontal:"center", vertical:"center", wrapText:true }, border:{ top:thin(C.border), bottom:med(C.blue), left:thin(C.border), right:thin(C.border) } },
+      tableHdrL: { font:{ bold:true, sz:11, color:{rgb:C.navy} }, fill:{ fgColor:{rgb:C.headerBg} }, alignment:{ horizontal:"left",   vertical:"center", wrapText:true, indent:1 }, border:{ top:thin(C.border), bottom:med(C.blue), left:thin(C.border), right:thin(C.border) } },
+      kvKey:     { font:{ bold:true, sz:11, color:{rgb:"374151"} }, fill:{ fgColor:{rgb:C.headerBg} }, alignment:{ horizontal:"left", vertical:"center", indent:1 }, border:{ right:thin(C.border), bottom:thin(C.borderSoft) } },
+      kvVal:     { font:{ sz:11, color:{rgb:"111827"} }, alignment:{ horizontal:"left", vertical:"center", indent:1 }, border:{ bottom:thin(C.borderSoft) } },
+      cellEven:  { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"left", vertical:"center", wrapText:true, indent:1 }, border:borderAll(C.borderSoft) },
+      cellOdd:   { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.bgAlt} }, alignment:{ horizontal:"left", vertical:"center", wrapText:true, indent:1 }, border:borderAll(C.borderSoft) },
+      cellCenterEven: { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      cellCenterOdd:  { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.bgAlt} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      cellNumEven:    { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"right", vertical:"center", indent:1 }, border:borderAll(C.borderSoft) },
+      cellNumOdd:     { font:{ sz:10, color:{rgb:"111827"} }, fill:{ fgColor:{rgb:C.bgAlt} }, alignment:{ horizontal:"right", vertical:"center", indent:1 }, border:borderAll(C.borderSoft) },
+      cellMutedEven:  { font:{ sz:10, color:{rgb:C.mutedFg} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      cellMutedOdd:   { font:{ sz:10, color:{rgb:C.mutedFg} }, fill:{ fgColor:{rgb:C.bgAlt} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      codeEven:  { font:{ bold:true, sz:10, color:{rgb:C.navy} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      codeOdd:   { font:{ bold:true, sz:10, color:{rgb:C.navy} }, fill:{ fgColor:{rgb:C.bgAlt} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      badgeQual: { font:{ bold:true, sz:9, color:{rgb:C.qualFg} }, fill:{ fgColor:{rgb:C.qualBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.qualFg) },
+      badgeQuan: { font:{ bold:true, sz:9, color:{rgb:C.quanFg} }, fill:{ fgColor:{rgb:C.quanBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.quanFg) },
+      badgeNum:  { font:{ bold:true, sz:9, color:{rgb:C.numFg}  }, fill:{ fgColor:{rgb:C.numBg}  }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.numFg) },
+      pass:      { font:{ bold:true, sz:10, color:{rgb:C.passFg} }, fill:{ fgColor:{rgb:C.passBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.passFg) },
+      fail:      { font:{ bold:true, sz:10, color:{rgb:C.failFg} }, fill:{ fgColor:{rgb:C.failBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.failFg) },
+      yesCell:   { font:{ bold:true, sz:10, color:{rgb:C.passFg} }, fill:{ fgColor:{rgb:C.passBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      noCell:    { font:{ bold:true, sz:10, color:{rgb:C.failFg} }, fill:{ fgColor:{rgb:C.failBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      riskHigh:  { font:{ bold:true, sz:10, color:{rgb:C.failFg} }, fill:{ fgColor:{rgb:C.failBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      riskMed:   { font:{ bold:true, sz:10, color:{rgb:"92400E"}  }, fill:{ fgColor:{rgb:C.numBg}  }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      riskLow:   { font:{ bold:true, sz:10, color:{rgb:C.passFg} }, fill:{ fgColor:{rgb:C.passBg} }, alignment:{ horizontal:"center", vertical:"center" }, border:borderAll(C.borderSoft) },
+      note:      { font:{ italic:true, sz:9, color:{rgb:"6B7280"} }, alignment:{ horizontal:"left", vertical:"center", indent:1 } },
+      footerBar: { font:{ italic:true, sz:9, color:{rgb:"9CA3AF"} }, fill:{ fgColor:{rgb:C.white} }, alignment:{ horizontal:"right", vertical:"center", indent:1 }, border:{ top:thin(C.border) } }
+    };
+
+    const setCell = (ws, r, c, value, style) => {
+      const addr = XLSX.utils.encode_cell({r, c});
+      const cell = ws[addr] || {};
+      cell.v = value;
+      cell.t = typeof value === "number" ? "n" : "s";
+      if (style) cell.s = style;
+      ws[addr] = cell;
+    };
+    const applyStyle = (ws, r, c, style) => {
+      const addr = XLSX.utils.encode_cell({r, c});
+      if (!ws[addr]) ws[addr] = { t:"s", v:"" };
+      ws[addr].s = style;
+    };
+    const setRow = (ws, r, height) => { ws["!rows"] = ws["!rows"] || []; ws["!rows"][r] = { hpt: height }; };
+    const setColWidths = (ws, widths) => { ws["!cols"] = widths.map(w => ({wch: w})); };
+    const setMerges = (ws, merges) => { ws["!merges"] = (ws["!merges"]||[]).concat(merges); };
+    const growRange = (ws, r, c) => {
+      const cur = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : { s:{r:0,c:0}, e:{r:0,c:0} };
+      if (r > cur.e.r) cur.e.r = r;
+      if (c > cur.e.c) cur.e.c = c;
+      ws["!ref"] = XLSX.utils.encode_range(cur);
+    };
+
+    // Factory: create a standardized sheet with title banner + subtitle banner + optional KV summary
+    const makeBanner = (ws, title, subtitle, colSpan) => {
+      setCell(ws, 0, 0, title, s.title);
+      for (let c = 1; c < colSpan; c++) applyStyle(ws, 0, c, s.title);
+      setMerges(ws, [{s:{r:0,c:0}, e:{r:0, c:colSpan-1}}]);
+      setRow(ws, 0, 32);
+      setCell(ws, 1, 0, subtitle, s.subtitle);
+      for (let c = 1; c < colSpan; c++) applyStyle(ws, 1, c, s.subtitle);
+      setMerges(ws, [{s:{r:1,c:0}, e:{r:1, c:colSpan-1}}]);
+      setRow(ws, 1, 22);
+      growRange(ws, 1, colSpan-1);
+    };
+
+    const typeStyle = (tty) => tty==="Qualitative" ? s.badgeQual : tty==="Quantitative" ? s.badgeQuan : tty==="Numeric" ? s.badgeNum : null;
+    const riskStyle = (r) => r==="High" ? s.riskHigh : r==="Medium" ? s.riskMed : r==="Low" ? s.riskLow : null;
+
+    // ╔══════════════════════════════════════════════════╗
+    // ║  SHEET 1: COVER / SUMMARY                        ║
+    // ╚══════════════════════════════════════════════════╝
+    const wsCover = {};
+    makeBanner(wsCover, "GlobalCore M3 — Mirror / Wet Coater Readiness", "QI Configuration Export  ·  " + plantName + "  ·  " + today, 4);
+    setColWidths(wsCover, [28, 40, 20, 26]);
+
+    const pathLabel = isPathA ? "Path A (GPIS → M3 WCO001 PASS/FAIL)" : "Path B (Full M3 QI Request)";
+    const qiFreq = isPathA ? (qiFreqA[selectedPlant]||"TBD") : (qiFreqB[selectedPlant]||"TBD");
+
+    // Plant Info block (rows 3-9)
+    const info = [
+      ["Plant",           plantName,                        "Region",             currentPlant.region],
+      ["Plant ID",        selectedPlant,                    "Status",             currentPlant.status],
+      ["System",          currentPlant.system,              "GPIS Used",          currentPlant.gpisUsed],
+      ["Integration Path", pathLabel,                       "QI Request Freq.",   qiFreq],
+      ["Data Owner",      "Robert Skowron — Global Quality SME", "Dashboard Ver.", "v" + DASHBOARD_VERSION],
+      ["Export Date",     today,                            "Date Received",      currentPlant.dateReceived || "—"]
+    ];
+    let r = 3;
+    setCell(wsCover, 2, 0, "Plant Information", s.sectionHd);
+    for (let c=1;c<4;c++) applyStyle(wsCover, 2, c, s.sectionHd);
+    setMerges(wsCover, [{s:{r:2,c:0},e:{r:2,c:3}}]);
+    setRow(wsCover, 2, 22);
+    info.forEach(row => {
+      setCell(wsCover, r, 0, row[0], s.kvKey);
+      setCell(wsCover, r, 1, row[1], s.kvVal);
+      setCell(wsCover, r, 2, row[2], s.kvKey);
+      setCell(wsCover, r, 3, row[3], s.kvVal);
+      setRow(wsCover, r, 20);
+      r++;
+    });
+
+    // Configuration Summary block
+    r++;
+    setCell(wsCover, r, 0, "Configuration Summary", s.sectionHd);
+    for (let c=1;c<4;c++) applyStyle(wsCover, r, c, s.sectionHd);
+    setMerges(wsCover, [{s:{r:r,c:0},e:{r:r,c:3}}]);
+    setRow(wsCover, r, 22);
+    r++;
+
     if (isPathA) {
-      coverData.push(["WCO001 Current Result:", generalTestResult[selectedPlant] || "PASS"]);
+      const result = generalTestResult[selectedPlant] || "PASS";
+      setCell(wsCover, r, 0, "WCO001 Current Result", s.kvKey);
+      setCell(wsCover, r, 1, result, result === "PASS" ? s.pass : s.fail);
+      setCell(wsCover, r, 2, "Test Type", s.kvKey);
+      setCell(wsCover, r, 3, "2-Qualitative", s.badgeQual);
+      setRow(wsCover, r, 22);
     } else {
       const catalogVisible = WCO_CATALOG.filter(w => !(pcfgTests[w.code] && pcfgTests[w.code].removed));
       const customTests = Object.values(pcfgTests).filter(t => t && t.custom && !t.removed);
       const enabled = catalogVisible.filter(w => { const t = pcfgTests[w.code]; return !t || t.enabled !== false; });
-      coverData.push(["Built-in WCO Tests:", catalogVisible.length + " visible / " + WCO_CATALOG.length + " total"]);
-      coverData.push(["Enabled Tests:", enabled.length]);
-      coverData.push(["Custom Tests Added:", customTests.length]);
-      coverData.push(["Removed Tests:", WCO_CATALOG.length - catalogVisible.length]);
+      const stats = [
+        ["Built-in WCO Tests", catalogVisible.length + " visible / " + WCO_CATALOG.length + " total", "Enabled Tests", String(enabled.length)],
+        ["Custom Tests Added", String(customTests.length), "Removed Tests", String(WCO_CATALOG.length - catalogVisible.length)]
+      ];
+      stats.forEach(row => {
+        setCell(wsCover, r, 0, row[0], s.kvKey);
+        setCell(wsCover, r, 1, row[1], s.kvVal);
+        setCell(wsCover, r, 2, row[2], s.kvKey);
+        setCell(wsCover, r, 3, row[3], s.kvVal);
+        setRow(wsCover, r, 20);
+        r++;
+      });
     }
-    const wsCover = XLSX.utils.aoa_to_sheet(coverData);
-    setColWidths(wsCover, [30, 50]);
-    setMerges(wsCover, [{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}},{s:{r:14,c:0},e:{r:14,c:1}}]);
+    r += 2;
+    setCell(wsCover, r, 0, "Report auto-generated from M3 Readiness Dashboard v" + DASHBOARD_VERSION + "  ·  " + new Date().toLocaleString(), s.footerBar);
+    for (let c=1;c<4;c++) applyStyle(wsCover, r, c, s.footerBar);
+    setMerges(wsCover, [{s:{r:r,c:0},e:{r:r,c:3}}]);
+    growRange(wsCover, r, 3);
     XLSX.utils.book_append_sheet(wb, wsCover, "Summary");
 
-    // === SHEET 2: QI CONFIG (Path-specific) ===
+    // ╔══════════════════════════════════════════════════╗
+    // ║  SHEET 2: QI CONFIG (Path A or Path B)           ║
+    // ╚══════════════════════════════════════════════════╝
     if (isPathA) {
-      const aoa = [
-        ["Path A — GPIS to M3 WCO001 PASS/FAIL"],
-        [],
-        ["QI Request Frequency:", qiFreqA[selectedPlant] || "TBD"],
-        [],
-        ["WCO Code","Description","Type","Expected Max","Expected Min","Target","Decimals","UoM","Current Result"],
-        ["WCO001","Wet Coater Glass GPIS Pass/Fail","2-Qualitative",0,0,0,0,"",generalTestResult[selectedPlant]||"PASS"]
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      setColWidths(ws, [14, 40, 16, 14, 14, 10, 10, 8, 14]);
-      setMerges(ws, [{s:{r:0,c:0},e:{r:0,c:8}}]);
+      const ws = {};
+      const cols = ["WCO Code","Description","Type","Expected Max","Expected Min","Target","Decimals","UoM","Current Result"];
+      const colSpan = cols.length;
+      makeBanner(ws, "Path A — GPIS to M3 WCO001 PASS/FAIL", "QI Request Frequency: " + qiFreq, colSpan);
+      setColWidths(ws, [14, 40, 16, 14, 14, 10, 10, 10, 16]);
+      const hdrRow = 2;
+      cols.forEach((h, c) => setCell(ws, hdrRow, c, h, s.tableHdr));
+      setRow(ws, hdrRow, 28);
+      const dataRow = hdrRow + 1;
+      const result = generalTestResult[selectedPlant] || "PASS";
+      setCell(ws, dataRow, 0, "WCO001", s.codeEven);
+      setCell(ws, dataRow, 1, "Wet Coater Glass GPIS Pass/Fail", s.cellEven);
+      setCell(ws, dataRow, 2, "Qualitative", s.badgeQual);
+      setCell(ws, dataRow, 3, "—", s.cellMutedEven);
+      setCell(ws, dataRow, 4, "—", s.cellMutedEven);
+      setCell(ws, dataRow, 5, "—", s.cellMutedEven);
+      setCell(ws, dataRow, 6, "—", s.cellMutedEven);
+      setCell(ws, dataRow, 7, "—", s.cellMutedEven);
+      setCell(ws, dataRow, 8, result, result === "PASS" ? s.pass : s.fail);
+      setRow(ws, dataRow, 24);
+      growRange(ws, dataRow, colSpan-1);
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({s:{r:hdrRow,c:0}, e:{r:dataRow,c:colSpan-1}}) };
+      ws["!freeze"] = { xSplit:0, ySplit:hdrRow+1 };
       XLSX.utils.book_append_sheet(wb, ws, "QI Config Path A");
     } else {
-      const aoa = [
-        ["Path B — Full M3 QI Request (WCO Tests with Parameters)"],
-        [],
-        ["QI Request Frequency:", qiFreqB[selectedPlant] || "TBD"],
-        [],
-        ["#","WCO Code","Description","Type","Enabled","Expected Max","Expected Min","Target","Decimals","UoM","Expected Result","Source"]
-      ];
+      const ws = {};
+      const cols = ["#","WCO Code","Description","Type","Enabled","Max","Min","Target","Dec","UoM","Result","Source"];
+      const colSpan = cols.length;
+      makeBanner(ws, "Path B — Full M3 QI Request (" + plantName + ")", "QI Request Frequency: " + qiFreq, colSpan);
+      setColWidths(ws, [5, 14, 40, 15, 10, 12, 12, 12, 8, 10, 12, 14]);
+
+      const hdrRow = 2;
+      cols.forEach((h, c) => setCell(ws, hdrRow, c, h, c===2 ? s.tableHdrL : s.tableHdr));
+      setRow(ws, hdrRow, 32);
+
       const allRows = [];
       WCO_CATALOG.forEach(w => { if (!(pcfgTests[w.code] && pcfgTests[w.code].removed)) allRows.push(w); });
       Object.values(pcfgTests).forEach(t => { if (t && t.custom && !t.removed && !WCO_CATALOG.find(w => w.code === t.code)) allRows.push(t); });
+
       allRows.forEach((w, i) => {
+        const rowIdx = hdrRow + 1 + i;
+        const isEven = i % 2 === 0;
+        const cell = isEven ? s.cellEven : s.cellOdd;
+        const cellC = isEven ? s.cellCenterEven : s.cellCenterOdd;
+        const cellN = isEven ? s.cellNumEven : s.cellNumOdd;
+        const cellM = isEven ? s.cellMutedEven : s.cellMutedOdd;
+        const code = isEven ? s.codeEven : s.codeOdd;
         const t = pcfgTests[w.code] || {};
         const tty = t.tty || w.tty;
         const isQ = tty === "Qualitative";
         const enabled = t.enabled !== false;
-        aoa.push([
-          i+1,
-          w.code,
-          t.desc || w.desc,
-          tty,
-          enabled ? "Yes" : "No",
-          isQ ? "—" : (t.expMax !== undefined ? t.expMax : w.expMax),
-          isQ ? "—" : (t.expMin !== undefined ? t.expMin : w.expMin),
-          isQ ? "—" : (t.target !== undefined ? t.target : w.target),
-          isQ ? "—" : (t.dec !== undefined ? t.dec : w.dec),
-          isQ ? "—" : (t.uom || w.uom || ""),
-          isQ ? (t.tst || w.tst || "PASS") : "—",
-          w.custom ? "Custom" : "WCO Catalog"
-        ]);
+        setCell(ws, rowIdx, 0, i+1, cellC);
+        setCell(ws, rowIdx, 1, w.code, code);
+        setCell(ws, rowIdx, 2, t.desc || w.desc, cell);
+        setCell(ws, rowIdx, 3, tty, typeStyle(tty) || cellC);
+        setCell(ws, rowIdx, 4, enabled ? "Yes" : "No", enabled ? s.yesCell : s.noCell);
+        if (isQ) {
+          setCell(ws, rowIdx, 5, "—", cellM);
+          setCell(ws, rowIdx, 6, "—", cellM);
+          setCell(ws, rowIdx, 7, "—", cellM);
+          setCell(ws, rowIdx, 8, "—", cellM);
+          setCell(ws, rowIdx, 9, "—", cellM);
+          const res = t.tst || w.tst || "PASS";
+          setCell(ws, rowIdx, 10, res, res === "PASS" ? s.pass : s.fail);
+        } else {
+          setCell(ws, rowIdx, 5, (t.expMax !== undefined ? t.expMax : w.expMax), cellN);
+          setCell(ws, rowIdx, 6, (t.expMin !== undefined ? t.expMin : w.expMin), cellN);
+          setCell(ws, rowIdx, 7, (t.target !== undefined ? t.target : w.target), cellN);
+          setCell(ws, rowIdx, 8, (t.dec !== undefined ? t.dec : w.dec), cellC);
+          setCell(ws, rowIdx, 9, (t.uom || w.uom || ""), cellC);
+          setCell(ws, rowIdx, 10, "—", cellM);
+        }
+        setCell(ws, rowIdx, 11, w.custom ? "Custom" : "WCO Catalog", w.custom ? { ...cellC, font:{ bold:true, sz:10, color:{rgb:C.numFg}}, fill:{ fgColor:{rgb:C.warnBg}} } : cellC);
+        setRow(ws, rowIdx, 22);
       });
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      setColWidths(ws, [4, 14, 40, 16, 10, 14, 14, 12, 10, 10, 14, 14]);
-      setMerges(ws, [{s:{r:0,c:0},e:{r:0,c:11}}]);
+      const lastRow = hdrRow + allRows.length;
+      growRange(ws, lastRow, colSpan-1);
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({s:{r:hdrRow,c:0}, e:{r:lastRow, c:colSpan-1}}) };
+      ws["!freeze"] = { xSplit:2, ySplit:hdrRow+1 };
       XLSX.utils.book_append_sheet(wb, ws, "QI Config Path B");
     }
 
-    // === SHEET 3: QC TESTS (current plant) ===
-    const qcAoa = [
-      ["QC Tests Overview — " + plantName],
-      [],
-      ["#","QC Test","Purpose","Test Type","Status","Frequency","Tool","Mode","Recorded In"]
-    ];
-    TESTS.forEach((t, i) => {
-      const d = t[selectedPlant] || {};
-      const statusStr = d.s === 3 ? "Performed" : d.s === 1 ? "Not Performed" : "N/A";
-      if (d.s !== undefined) qcAoa.push([i+1, t.full || t.name, t.purpose, t.type, statusStr, d.f || "—", d.t || "—", d.m || "—", d.w || "—"]);
-    });
-    const wsQc = XLSX.utils.aoa_to_sheet(qcAoa);
-    setColWidths(wsQc, [4, 34, 30, 14, 14, 22, 22, 12, 14]);
-    setMerges(wsQc, [{s:{r:0,c:0},e:{r:0,c:8}}]);
-    XLSX.utils.book_append_sheet(wb, wsQc, "QC Tests");
-
-    // === SHEET 4: RAW MATERIALS (consolidated for current plant) ===
-    const matAoa = [
-      ["Raw Materials — " + plantName],
-      [],
-      ["#","Material Category","Typical Examples","Used on Line?","Quality Critical?","Visible in M3?","Lot-Controlled?","Risk Level","Comments"]
-    ];
-    const pd = matPlantData[selectedPlant] || {};
-    const allMats = [...MATERIALS, ...Object.entries(matExtraMaterials)
-      .filter(([id]) => !MATERIALS.find(m => m.id == id))
-      .map(([id,d]) => ({id:parseInt(id),cat:d.cat,examples:d.examples,note:d.note}))];
-    allMats.forEach(m => {
-      const d = pd[m.id] || {};
-      matAoa.push([m.id, m.cat, m.examples, d.used || "—", d.critical || "—", d.visible || "—", d.lotCtrl || "—", d.risk || "—", d.comment || m.note || ""]);
-    });
-    const wsMat = XLSX.utils.aoa_to_sheet(matAoa);
-    setColWidths(wsMat, [4, 28, 32, 12, 14, 12, 14, 10, 40]);
-    setMerges(wsMat, [{s:{r:0,c:0},e:{r:0,c:8}}]);
-    XLSX.utils.book_append_sheet(wb, wsMat, "Raw Materials");
-
-    // === SHEET 5: RM QI TESTS (if any) ===
-    if (rmTests.length > 0) {
-      const rmAoa = [
-        ["Raw Material QI Tests — " + plantName],
-        [],
-        ["#","Code","Description","Material","Type","Expected Result","Max","Min","Target","Decimals","UoM","Samples/Lot","Note"]
-      ];
-      rmTests.forEach((t, i) => {
-        const isQ = t.tty === "Qualitative";
-        rmAoa.push([i+1, t.code, t.desc, t.material||"", t.tty||"", isQ ? (t.tst||"PASS") : "—", isQ ? "—" : t.expMax, isQ ? "—" : t.expMin, isQ ? "—" : t.target, t.dec, t.uom||"—", t.freq, t.note||""]);
+    // ╔══════════════════════════════════════════════════╗
+    // ║  SHEET 3: QC TESTS (current plant only)          ║
+    // ╚══════════════════════════════════════════════════╝
+    {
+      const ws = {};
+      const cols = ["#","QC Test","Purpose","Test Type","Status","Frequency","Tool","Mode","Recorded In"];
+      const colSpan = cols.length;
+      makeBanner(ws, "QC Tests — " + plantName, TESTS.filter(t => t[selectedPlant] && t[selectedPlant].s === 3).length + " performed  ·  " + TESTS.filter(t => t[selectedPlant] && t[selectedPlant].s === 1).length + " not performed", colSpan);
+      setColWidths(ws, [5, 36, 32, 14, 14, 22, 22, 12, 14]);
+      const hdrRow = 2;
+      cols.forEach((h, c) => setCell(ws, hdrRow, c, h, c<=3 ? s.tableHdrL : s.tableHdr));
+      setRow(ws, hdrRow, 28);
+      let ri = hdrRow + 1;
+      TESTS.forEach((t, idx) => {
+        const d = t[selectedPlant] || {};
+        if (d.s === undefined) return;
+        const isEven = (ri - hdrRow - 1) % 2 === 0;
+        const cell = isEven ? s.cellEven : s.cellOdd;
+        const cellC = isEven ? s.cellCenterEven : s.cellCenterOdd;
+        const statusStr = d.s === 3 ? "Performed" : d.s === 1 ? "Not Performed" : "N/A";
+        const statusStyle = d.s === 3 ? s.yesCell : d.s === 1 ? s.noCell : { ...cellC, font:{sz:10,color:{rgb:C.mutedFg}} };
+        setCell(ws, ri, 0, idx+1, cellC);
+        setCell(ws, ri, 1, t.full || t.name, cell);
+        setCell(ws, ri, 2, t.purpose, cell);
+        setCell(ws, ri, 3, t.type, cell);
+        setCell(ws, ri, 4, statusStr, statusStyle);
+        setCell(ws, ri, 5, d.f || "—", cell);
+        setCell(ws, ri, 6, d.t || "—", cell);
+        setCell(ws, ri, 7, d.m || "—", cellC);
+        setCell(ws, ri, 8, d.w || "—", cellC);
+        setRow(ws, ri, 22);
+        ri++;
       });
-      const wsRm = XLSX.utils.aoa_to_sheet(rmAoa);
-      setColWidths(wsRm, [4, 12, 28, 20, 14, 14, 10, 10, 10, 10, 10, 12, 30]);
-      setMerges(wsRm, [{s:{r:0,c:0},e:{r:0,c:12}}]);
-      XLSX.utils.book_append_sheet(wb, wsRm, "RM QI Tests");
+      const lastRow = ri - 1;
+      growRange(ws, lastRow, colSpan-1);
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({s:{r:hdrRow,c:0}, e:{r:lastRow, c:colSpan-1}}) };
+      ws["!freeze"] = { xSplit:0, ySplit:hdrRow+1 };
+      XLSX.utils.book_append_sheet(wb, ws, "QC Tests");
     }
 
-    // === SHEET 6: ALL PLANTS OVERVIEW ===
-    const overAoa = [
-      ["All Plants Overview"],
-      [],
-      ["Plant","Region","Status","Date Received","System","GPIS Used","Recommended Path","Notes"]
-    ];
-    PLANTS.forEach(p => {
-      const isGpis = p.gpisUsed === "Yes";
-      const path = isGpis ? "Path A (GPIS)" : p.gpisUsed === "No" ? "Path B (Full QI)" : "TBD";
-      overAoa.push([p.name, p.region, p.status, p.dateReceived || "—", p.system, p.gpisUsed, path, p.note || ""]);
-    });
-    const wsOver = XLSX.utils.aoa_to_sheet(overAoa);
-    setColWidths(wsOver, [20, 10, 12, 14, 20, 10, 20, 40]);
-    setMerges(wsOver, [{s:{r:0,c:0},e:{r:0,c:7}}]);
-    XLSX.utils.book_append_sheet(wb, wsOver, "All Plants");
+    // ╔══════════════════════════════════════════════════╗
+    // ║  SHEET 4: RAW MATERIALS (current plant only)     ║
+    // ╚══════════════════════════════════════════════════╝
+    {
+      const ws = {};
+      const cols = ["#","Material Category","Typical Examples","Used on Line?","Quality Critical?","Visible in M3?","Lot-Controlled?","Risk Level","Comments"];
+      const colSpan = cols.length;
+      const pd = matPlantData[selectedPlant] || {};
+      const hasData = Object.keys(pd).length > 0;
+      const subtitle = hasData ? "Data received — " + (matUploadLog.find(l => l.id === selectedPlant)?.by || "plant") : "Awaiting plant response";
+      makeBanner(ws, "Raw Materials — " + plantName, subtitle, colSpan);
+      setColWidths(ws, [5, 28, 32, 14, 16, 14, 14, 12, 40]);
+      const hdrRow = 2;
+      cols.forEach((h, c) => setCell(ws, hdrRow, c, h, c<=2 ? s.tableHdrL : s.tableHdr));
+      setRow(ws, hdrRow, 32);
+      const allMats = [...MATERIALS, ...Object.entries(matExtraMaterials)
+        .filter(([id]) => !MATERIALS.find(m => m.id == id))
+        .map(([id,d]) => ({id:parseInt(id),cat:d.cat,examples:d.examples,note:d.note}))];
+      let ri = hdrRow + 1;
+      allMats.forEach((m, i) => {
+        const d = pd[m.id] || {};
+        const isEven = i % 2 === 0;
+        const cell = isEven ? s.cellEven : s.cellOdd;
+        const cellC = isEven ? s.cellCenterEven : s.cellCenterOdd;
+        const cellM = isEven ? s.cellMutedEven : s.cellMutedOdd;
+        const ynStyle = v => v === "Yes" ? s.yesCell : v === "No" ? s.noCell : cellM;
+        setCell(ws, ri, 0, m.id, cellC);
+        setCell(ws, ri, 1, m.cat, cell);
+        setCell(ws, ri, 2, m.examples, cell);
+        setCell(ws, ri, 3, d.used || "—", ynStyle(d.used));
+        setCell(ws, ri, 4, d.critical || "—", ynStyle(d.critical));
+        setCell(ws, ri, 5, d.visible || "—", ynStyle(d.visible));
+        setCell(ws, ri, 6, d.lotCtrl || "—", ynStyle(d.lotCtrl));
+        setCell(ws, ri, 7, d.risk || "—", riskStyle(d.risk) || cellM);
+        setCell(ws, ri, 8, d.comment || m.note || "", cell);
+        setRow(ws, ri, 22);
+        ri++;
+      });
+      const lastRow = ri - 1;
+      growRange(ws, lastRow, colSpan-1);
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({s:{r:hdrRow,c:0}, e:{r:lastRow, c:colSpan-1}}) };
+      ws["!freeze"] = { xSplit:0, ySplit:hdrRow+1 };
+      XLSX.utils.book_append_sheet(wb, ws, "Raw Materials");
+    }
 
-    // Write & download
+    // ╔══════════════════════════════════════════════════╗
+    // ║  SHEET 5: RM QI TESTS (if any)                   ║
+    // ╚══════════════════════════════════════════════════╝
+    if (rmTests.length > 0) {
+      const ws = {};
+      const cols = ["#","Code","Description","Material","Type","Result","Max","Min","Target","Dec","UoM","Freq","Note"];
+      const colSpan = cols.length;
+      makeBanner(ws, "Raw Material QI Tests — " + plantName, rmTests.length + " test(s) defined", colSpan);
+      setColWidths(ws, [5, 12, 30, 20, 14, 12, 10, 10, 10, 8, 10, 8, 32]);
+      const hdrRow = 2;
+      cols.forEach((h, c) => setCell(ws, hdrRow, c, h, c<=3 ? s.tableHdrL : s.tableHdr));
+      setRow(ws, hdrRow, 28);
+      rmTests.forEach((t, i) => {
+        const ri = hdrRow + 1 + i;
+        const isEven = i % 2 === 0;
+        const cell = isEven ? s.cellEven : s.cellOdd;
+        const cellC = isEven ? s.cellCenterEven : s.cellCenterOdd;
+        const cellN = isEven ? s.cellNumEven : s.cellNumOdd;
+        const cellM = isEven ? s.cellMutedEven : s.cellMutedOdd;
+        const code = isEven ? s.codeEven : s.codeOdd;
+        const isQ = t.tty === "Qualitative";
+        setCell(ws, ri, 0, i+1, cellC);
+        setCell(ws, ri, 1, t.code, code);
+        setCell(ws, ri, 2, t.desc, cell);
+        setCell(ws, ri, 3, t.material||"", cell);
+        setCell(ws, ri, 4, t.tty||"", typeStyle(t.tty) || cellC);
+        if (isQ) {
+          const res = t.tst || "PASS";
+          setCell(ws, ri, 5, res, res === "PASS" ? s.pass : s.fail);
+          for (let c=6;c<=10;c++) setCell(ws, ri, c, "—", cellM);
+        } else {
+          setCell(ws, ri, 5, "—", cellM);
+          setCell(ws, ri, 6, t.expMax, cellN);
+          setCell(ws, ri, 7, t.expMin, cellN);
+          setCell(ws, ri, 8, t.target, cellN);
+          setCell(ws, ri, 9, t.dec, cellC);
+          setCell(ws, ri, 10, t.uom||"—", cellC);
+        }
+        setCell(ws, ri, 11, t.freq, cellC);
+        setCell(ws, ri, 12, t.note||"", cell);
+        setRow(ws, ri, 22);
+      });
+      const lastRow = hdrRow + rmTests.length;
+      growRange(ws, lastRow, colSpan-1);
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({s:{r:hdrRow,c:0}, e:{r:lastRow, c:colSpan-1}}) };
+      ws["!freeze"] = { xSplit:2, ySplit:hdrRow+1 };
+      XLSX.utils.book_append_sheet(wb, ws, "RM QI Tests");
+    }
+
+    // Write & download — per-plant file
     const filename = "M3_QI_Config_" + selectedPlant + "_" + today + ".xlsx";
     XLSX.writeFile(wb, filename);
   };
@@ -1842,14 +2065,14 @@ function App() {
           const getVal = (pid, matId, field) => { const pd = matPlantData[pid]; if (!pd) return null; const md = pd[matId]; if (!md) return null; return md[field]; };
           const getComment = (pid, matId) => { const pd = matPlantData[pid]; if (!pd) return ""; const md = pd[matId]; if (!md) return ""; return md.comment || ""; };
           const consensus = (matId, field) => {
+            // Powders (id=8) and Coating targets (id=9) are already implemented in M3 —
+            // plant-level divergence is irrelevant for the M3 consolidation decision.
+            if (matId === 8 || matId === 9) return {label:"✅ IMPLEMENTED IN M3",color:"#16A34A",bg:"#DCFCE7"};
             const vals = MAT_PLANTS.map(p => getVal(p, matId, field)).filter(v => v !== null && v !== undefined);
             if (vals.length === 0) return {label:"No data",color:"#94A3B8",bg:"#F1F5F9"};
             const yes = vals.filter(v => v === "Yes").length;
             const no = vals.filter(v => v === "No").length;
-            if (yes === vals.length) {
-              if (matId === 8 || matId === 9) return {label:"✅ IMPLEMENTED IN M3",color:"#16A34A",bg:"#DCFCE7"};
-              return {label:"✅ ALIGNED (Yes)",color:"#16A34A",bg:"#DCFCE7"};
-            }
+            if (yes === vals.length) return {label:"✅ ALIGNED (Yes)",color:"#16A34A",bg:"#DCFCE7"};
             if (no === vals.length) return {label:"✅ ALIGNED (No)",color:"#6B7280",bg:"#F3F4F6"};
             return {label:"⚠️ DIVERGENT ("+yes+"/"+vals.length+" Yes)",color:"#D97706",bg:"#FEF3C7"};
           };
