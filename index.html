@@ -1,0 +1,2039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GlobalCore M3 - Mirror/Wet Coater Readiness Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #F8FAFC; }
+  .tooltip { position: relative; cursor: pointer; }
+  .tooltip .tip { display: none; position: absolute; z-index: 100; background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; min-width: 220px; max-width: 320px; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); box-shadow: 0 4px 12px rgba(0,0,0,.25); white-space: normal; }
+  .tooltip .tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #1e293b; }
+  .tooltip:hover .tip { display: block; }
+  input[type="text"], input[type="number"], select { padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 13px; }
+  input[type="text"]:focus, input[type="number"]:focus, select:focus { outline: none; border-color: #2E75B6; box-shadow: 0 0 0 3px rgba(46,117,182,0.1); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
+const NAVY="#1F4E79", BLUE="#2E75B6", GREEN="#27AE60", YELLOW="#F39C12", RED="#E74C3C";
+const DASHBOARD_VERSION = "2.4";
+const DATA_BUILT = "2026-04-14";
+const CHANGELOG = [
+  {ver:"2.4",date:"2026-04-14",note:"GulfGuard (KSA) raw materials data pre-loaded (Ali Alahmed). Raw Materials: 3/4 plants received. Path B QI Config: editable Description, Type dropdown, delete rows, disabled numeric fields for Qualitative, QC Matrix Map column removed. Add Custom Test accepts partial data. Multi-sheet professional Excel export. Full state Export/Import for GitHub sharing."},
+  {ver:"2.3",date:"2026-04-08",note:"Nongkhae (TH) raw materials data pre-loaded from Plant_Input_Nongkhae.xlsx. Raw Materials: 2/4 plants received (TAT, NK). Still waiting for GulfGuard (KSA) and El Marqués (MX)."},
+  {ver:"2.2",date:"2026-04-01",note:"M3 Integration Path AI Insights tab. RM QI Config tab for raw material tests. PASS/FAIL for qualitative tests in Path B. Renamed M3 QI Config."},
+  {ver:"2.1",date:"2026-04-01",note:"Tatui (BR) QC data added (13 tests + Paint Hardner). 4/4 plants confirmed. Drag & drop Excel import + version banner."},
+  {ver:"2.0",date:"2026-03-31",note:"Initial release with GG, NK, ELM data. QI Config, Materials tabs. Tatui pending."}
+];
+
+// AUTO-GENERATED DATA — Last refresh: 2026-04-01
+const PLANTS = [
+  { id:"GG",name:"GulfGuard (KSA)",region:"AMEIA",status:"received",dateReceived:"2026-03-31",system:"GPIS (assumed)",gpisUsed:"TBD",note:"Data confirmed." },
+  { id:"NK",name:"Nongkhae (TH)",region:"APAC",status:"received",dateReceived:"2026-03-31",system:"GPIS",gpisUsed:"Yes",note:"Data confirmed." },
+  { id:"ELM",name:"El Marqués (MX)",region:"LATAM",status:"received",dateReceived:"2026-03-31",system:"Plant Apps + Excel",gpisUsed:"No",note:"Data confirmed." },
+  { id:"TAT",name:"Tatui (BR)",region:"LATAM",status:"received",dateReceived:"2026-04-01",system:"GPIS",gpisUsed:"Yes",note:"Data confirmed. Completed by André Chieus and Laura Lourenço." }
+];
+const TESTS = [
+  {name:"Chemical Resistance Test - C...",full:"Chemical Resistance Test - CASS for 120 hrs.",purpose:"Mirror Durability",type:"Destructive",GG:{s:3,f:"Once/Shift (Currently ",t:"CASS",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"CASS Chamber",m:"Manual"},ELM:{s:3,f:"3 per day",t:"CASS Chamber",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Twice/shift",t:"Microscope & Visual",m:"Manual",w:"GPIS"}},
+  {name:"Silver Adhesion",full:"Silver Adhesion",purpose:"Silver Adhesion",type:"Destructive",GG:{s:3,f:"Once/Thickness/Shift",t:"Scotch Tape",m:"Manual"},NK:{s:3,f:"Once/shift",t:"Scotch Tape",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Scotch Tape (Scoth cin",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Every 120 mins",t:"Manual device w/ tape",m:"Manual",w:"GPIS"}},
+  {name:"Adhesion of Paint Film",full:"Adhesion of Paint Film",purpose:"Paint curing , Tape boll test",type:"Destructive",GG:{s:3,f:"Every 160 mins",t:"Cross Hatch Tool",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"Cross Hatch Tool",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Cross Hatch Tool",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Twice/shift",t:"Cross Hatch Tester",m:"Manual",w:"GPIS"}},
+  {name:"Reflectance",full:"Reflectance",purpose:"Silver (Mirror) + RMR transmission",type:"Destructive",GG:{s:3,f:"Once/Week",t:"Hunter UltraScan Pro",m:"Automatic"},NK:{s:3,f:"Once/shift",t:"Spectrophotometer",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:3,f:"Once/day",t:"Spectrometer",m:"Manual",w:"GPIS"}},
+  {name:"Paint Dry Film Thickness",full:"Paint Dry Film Thickness",purpose:"Paint layer thickness",type:"Dimensional",GG:{s:3,f:"Every 160 mins",t:"Took Gauge",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"Tooke gauge",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Tooke Gauge",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Every 120 mins",t:"Micrometer",m:"Manual",w:"GPIS"}},
+  {name:"Nitric Acid Test",full:"Nitric Acid Test",purpose:"Paint Corrosion resistance",type:"Destructive",GG:{s:1,f:"Not Done",t:"Nitric Acid",m:"Manual"},NK:{s:1,f:"Not test",t:"Nitric acid",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"10% HCl Dip Test",full:"10% HCl Dip Test",purpose:"Paint + GMP-A Corrosion resistance",type:"Destructive",GG:{s:1,f:"Not Done",t:"10% HCl",m:"Manual"},NK:{s:3,f:"Twice/shift (1% HCl)",t:"HCl acid",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Silver Deposition",full:"Silver Deposition",purpose:"Silver Deposition",type:"Destructive",GG:{s:3,f:"Once/Shift",t:"Titration",m:"Manual"},NK:{s:3,f:"Once/shift",t:"Titration",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Titration",m:"Manual",w:"Plant Apps"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Pendulum Hardness Test",full:"Pendulum Hardness Test",purpose:"Hardness - paint side",type:"Destructive",GG:{s:1,f:"Not Done",t:"Pendulum Hardness",m:"Automatic"},NK:{s:1,f:"Not test",t:"Under devp. QC",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Solvent Rub Test",full:"Solvent Rub Test",purpose:"Paint Curing",type:"Destructive",GG:{s:3,f:"Every 120 mins",t:"Solvent Rub Test kit",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"Solvent rub test kit",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Solvent Rub Test kit",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Twice/shift",t:"Taber Rub Tester",m:"Manual",w:"GPIS"}},
+  {name:"Powder Coverage Test",full:"Powder Coverage Test",purpose:"Interleaving powder coverage",type:"Visual",GG:{s:3,f:"Once/Shift",t:"Weighing Scale",m:"Manual"},NK:{s:1,f:"Not test",t:"(Visual check)n/a",m:"Manual"},ELM:{s:3,f:"2 times per turn",t:"Weighing Scale",m:"Manual",w:"Excel"},TAT:{s:3,f:"Every 120 mins",t:"Analytic Scale",m:"Manual",w:"GPIS"}},
+  {name:"Branding Ink Rub Test",full:"Branding Ink Rub Test",purpose:"Easiness for removing face side branding",type:"Destructive",GG:{s:1,f:"Not Done",t:"Branding Ink rub kit",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"Visual",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Paint Side Inspection",full:"Paint Side Inspection",purpose:"Visual inspection of final product",type:"Visual",GG:{s:3,f:"Every Lite",t:"Visual",m:"Manual"},NK:{s:3,f:"Every lite",t:"Visual",m:"Manual"},ELM:{s:3,f:"Every Lite",t:"Visual",m:"Manual",w:"Excel"},TAT:{s:3,f:"Every lite",t:"Visual",m:"Manual",w:"Excel"}},
+  {name:"Face Side Inspection",full:"Face Side Inspection",purpose:"Visual inspection of final product",type:"Visual",GG:{s:3,f:"Every Lite",t:"Visual",m:"Manual"},NK:{s:3,f:"Every lite",t:"Visual",m:"Manual"},ELM:{s:3,f:"Every Lite",t:"Visual",m:"Manual",w:"Excel"},TAT:{s:3,f:"Every lite",t:"Visual",m:"Manual",w:"Excel"}},
+  {name:"Edge Grinding Test",full:"Edge Grinding Test",purpose:"Paint curing",type:"Destructive",GG:{s:3,f:"Once/Shift",t:"Grinding Machine",m:"Manual"},NK:{s:1,f:"Not test",t:"n/a",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Pinhole Inspection in QC lit...",full:"Pinhole Inspection in QC lite",purpose:"No. of pinholes in final product",type:"Visual",GG:{s:3,f:"Every Lite",t:"Visual",m:"Manual"},NK:{s:3,f:"Every lite",t:"Visual",m:"Manual"},ELM:{s:3,f:"Every Lite",t:"Visual",m:"Manual",w:"Excel"},TAT:{s:3,f:"Every lite",t:"Visual",m:"Manual",w:"Excel"}},
+  {name:"Chemical Resistance Test - S...",full:"Chemical Resistance Test - Speed CASS for 1.5 hrs",purpose:"Mirror Durability",type:"Destructive",GG:{s:1,f:"Not Done",t:"Acid & Heater",m:"Manual"},NK:{s:3,f:"Twice/shift",t:"CASS solution",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Branding Code Inspection",full:"Branding Code Inspection",purpose:"Visual inspection of final product's branding",type:"Visual",GG:{s:3,f:"Every Lite",t:"Visual",m:"Manual"},NK:{s:3,f:"Every lite",t:"Visual",m:"Manual"},ELM:{s:3,f:"Every Lite",t:"Visual",m:"Manual",w:"Excel"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Lite Thickness",full:"Lite Thickness",purpose:"Lite Thickness",type:"Dimensional",GG:{s:3,f:"Once/Thickness/Shift",t:"Micrometer",m:"Manual"},NK:{s:1,f:"Not test",t:"Micrometer",m:"Manual"},ELM:{s:3,f:"Each thickness change",t:"Labels",m:"Manual",w:"Excel"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Lite Size (Length & Width)",full:"Lite Size (Length & Width)",purpose:"Lite Dimension",type:"Dimensional",GG:{s:3,f:"Once/Size/Shift",t:"Measuring Tape",m:"Manual"},NK:{s:3,f:"Once/Size",t:"Measuring tape",m:"Manual"},ELM:{s:3,f:"Each dimension change",t:"Labels",m:"Manual",w:"Plant Apps"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Lite Squareness",full:"Lite Squareness",purpose:"Lite Squareness",type:"Dimensional",GG:{s:3,f:"Once/Size/Shift",t:"Measuring Tape",m:"Manual"},NK:{s:3,f:"Once/Size",t:"Measuring tape",m:"Manual"},ELM:{s:3,f:"Each dimension change",t:"Labels",m:"Manual",w:"Excel"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Condensation Test (HTHH)",full:"Condensation Test (HTHH)",purpose:"Mirror Durability",type:"Destructive",GG:{s:1,f:"Not Done",t:"Condensation Chamber",m:"Manual"},NK:{s:1,f:"Not test",t:"Condensation chamber",m:"Manual"},ELM:{s:3,f:"3 per day",t:"Condensation Chamber",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Twice/shift",t:"Microscope & Visual",m:"Manual",w:"GPIS"}},
+  {name:"P2 Miror scanner (Process, R...",full:"P2 Miror scanner (Process, Raw glass)",purpose:"Visual inspection of final product",type:"Visual",GG:{s:1,f:"N/A",t:"NA",m:"Automatic"},NK:{s:3,f:"Every lite",t:"Scanner",m:"Automatic"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Ferric test",full:"Ferric test",purpose:"Mirror Durability",type:"Plant-specific",GG:{s:1,f:"N/A",t:"—",m:"—"},NK:{s:3,f:"Twice/shift",t:"Ferric chloride",m:"Manual"},ELM:{s:3,f:"Change in thickness or",t:"Ferric chloreth soluti",m:"Manual",w:"Plant Apps"},TAT:{s:3,f:"Twice/shift",t:"Microscope & Visual",m:"Manual",w:"GPIS"}},
+  {name:"Impact test",full:"Impact test",purpose:"Safety product properties",type:"Destructive",GG:{s:1,f:"N/A",t:"—",m:"—"},NK:{s:3,f:"Once/film batch",t:"Weight pendulum",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Flash light inspection - off...",full:"Flash light inspection - offline inspection",purpose:"Couldiness",type:"Visual",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:3,f:"When operate offline i",t:"Flash light",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Sand blasting test",full:"Sand blasting test",purpose:"Edge peeling check",type:"Plant-specific",GG:{s:3,f:"Once/Shift",t:"—",m:"Manual"},NK:{s:3,f:"To establish ?",t:"Outside Sand blasting",m:"Manual"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Resin thickness",full:"Resin thickness",purpose:"Revisar el espesor de resina",type:"Dimensional",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"Change in thickness or",t:"Tooke Gauge",m:"Manual",w:"Plant Apps"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Paint Weight",full:"Paint Weight",purpose:"Revisar el espesor de pintura",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"1 time per week",t:"Weighing Scale",m:"Manual",w:"For reference only"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"UV roller",full:"UV roller",purpose:"Mantener un buen acabado parte no reflectiva",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"Only if marks/after br",t:"Tape measure",m:"Manual",w:"For reference only"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"UV Resin",full:"UV Resin",purpose:"Mantener un buen acabado parte no reflectiva",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"Only if marks/after br",t:"Cross Hatch Tool",m:"Manual",w:"For reference only"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Ammonia Resistance",full:"Ammonia Resistance",purpose:"Mirror Durability",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"Change in thickness or",t:"Ammonium hydroxide sol",m:"Manual",w:"Plant Apps"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Salt fog",full:"Salt fog",purpose:"Mirror Durability",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:3,f:"3 per day",t:"Wet chamber",m:"Manual",w:"Plant Apps"},TAT:{s:1,f:"Not performed",t:"—",m:"—"}},
+  {name:"Paint Hardner Test",full:"Paint Hardner Test",purpose:"Check paint hardness",type:"Plant-specific",GG:{s:0,f:"—",t:"—",m:"—"},NK:{s:0,f:"—",t:"—",m:"—"},ELM:{s:0,f:"—",t:"—",m:"—"},TAT:{s:3,f:"Twice/shift",t:"Sclerometer hardness",m:"Manual",w:"GPIS"}}
+];
+
+// WCO_CATALOG: Real M3 QI Request test definitions (from WCO0010-ST spec, Guardian Czestochowa)
+// tty: 0=Quantitative, 1=Numeric qualifier, 2=Qualitative (PASS/FAIL)
+// freq: samples per lot (from Fre column)
+const WCO_CATALOG = [
+  { code:"WCO001", desc:"Silver Adherence", tty:"Qualitative", expMax:0, expMin:0, target:0, dec:0, tst:"PASS", uom:"", freq:1 },
+  { code:"WCO002", desc:"Silver Titration", tty:"Quantitative", expMax:17.7, expMin:15.9, target:16.6, dec:1, tst:null, uom:"ML", freq:1 },
+  { code:"WCO003", desc:"Ferric Chloride 25.4", tty:"Quantitative", expMax:127, expMin:0, target:78, dec:0, tst:null, uom:"MI", freq:3 },
+  { code:"WCO004", desc:"Amonia", tty:"Qualitative", expMax:0, expMin:0, target:0, dec:0, tst:"PASS", uom:"", freq:3 },
+  { code:"WCO005", desc:"Cross", tty:"Numeric", expMax:5, expMin:3, target:4, dec:0, tst:null, uom:"", freq:3 },
+  { code:"WCO006", desc:"Solvent Resistance", tty:"Quantitative", expMax:1000000, expMin:110, target:125, dec:0, tst:null, uom:"EA", freq:3 },
+  { code:"WCO007", desc:"UV roller condition", tty:"Quantitative", expMax:2, expMin:0, target:0, dec:0, tst:null, uom:"EA", freq:1 },
+  { code:"WCO008", desc:"UV coating curing", tty:"Qualitative", expMax:0, expMin:0, target:0, dec:0, tst:"PASS", uom:"", freq:1 },
+  { code:"WCO009", desc:"Paint thickness", tty:"Quantitative", expMax:1.8, expMin:1.3, target:1.6, dec:1, tst:null, uom:"MLS", freq:16 },
+  { code:"WCO010", desc:"UV coating thickness", tty:"Quantitative", expMax:0.3, expMin:0.1, target:0.2, dec:1, tst:null, uom:"MLS", freq:3 },
+  { code:"WCO011", desc:"CASS test (Corrosion)", tty:"Quantitative", expMax:1000, expMin:0, target:0, dec:0, tst:null, uom:"MI", freq:1 },
+  { code:"WCO012", desc:"CASS test (Points)", tty:"Quantitative", expMax:3, expMin:0, target:0, dec:0, tst:null, uom:"N/A", freq:1 },
+  { code:"WCO013", desc:"Humidity test (Points)", tty:"Quantitative", expMax:3, expMin:0, target:0, dec:0, tst:null, uom:"N/A", freq:1 },
+  { code:"WCO014", desc:"Humidity test (Stain)", tty:"Quantitative", expMax:3, expMin:0, target:0, dec:0, tst:null, uom:"MM", freq:1 },
+  { code:"WCO015", desc:"Hoffman hardness", tty:"Quantitative", expMax:1000, expMin:15, target:16, dec:0, tst:null, uom:"EA", freq:1 },
+  { code:"WCO016", desc:"Circular Taber (Strokes)", tty:"Quantitative", expMax:1000000, expMin:500, target:501, dec:0, tst:null, uom:"EA", freq:1 },
+  { code:"WCO017", desc:"Nut powder Visual", tty:"Qualitative", expMax:0, expMin:0, target:0, dec:0, tst:"PASS", uom:"", freq:1 },
+  { code:"WCO018", desc:"Nut powder Weight", tty:"Quantitative", expMax:750, expMin:500, target:500, dec:0, tst:null, uom:"MGM", freq:3 },
+  { code:"WCO019", desc:"Register Pin Holes", tty:"Quantitative", expMax:20, expMin:10, target:15, dec:0, tst:null, uom:"EA", freq:3 }
+];
+
+// ── RAW MATERIALS DATA ──
+const MATERIALS = [
+  {id:1,cat:"Silver chemicals",examples:"Silver nitrate, silver solution",note:"High cost, coating quality driver"},
+  {id:2,cat:"Sensitizer / Tin solution",examples:"Stannous chloride",note:"Critical for adhesion & durability"},
+  {id:3,cat:"Super sensitizer",examples:"Palladium chloride",note:"Process sensitivity, expensive"},
+  {id:4,cat:"Reducer",examples:"Reducing agents",note:"Chemical balance in coating"},
+  {id:5,cat:"Paint – Base coat",examples:"Base paint (various suppliers)",note:"Visual appearance & durability"},
+  {id:6,cat:"Paint – Top coat",examples:"Top paint",note:"Final appearance, customer facing"},
+  {id:7,cat:"Protective chemicals (GMP A/B)",examples:"Protective layers",note:"Corrosion protection layer"},
+  {id:8,cat:"Powders",examples:"Interleaving / separator powder",note:"Lot control exists but limited value"},
+  {id:9,cat:"Coating targets",examples:"Physical coating targets",note:"Existing M3 pattern available"},
+  {id:10,cat:"Minerals (raw batch)",examples:"Sand, soda, limestone, dolomite",note:"Typically not lot-controlled"},
+  {id:11,cat:"Other (plant specific)",examples:"(please specify)",note:"Plant-specific materials"},
+  {id:12,cat:"Cerium oxide",examples:"Cerium oxide",note:"Glass polish to guarantee silver adhesion",plantSpecific:"TAT"},
+  {id:13,cat:"Xylene",examples:"Xylene",note:"Paint viscosity adjustment",plantSpecific:"TAT"},
+  {id:14,cat:"Ferric Chloride",examples:"Ferric Chloride",note:"Glass final cleaning (end line)",plantSpecific:"TAT"}
+];
+const MAT_PLANTS = ["GG","NK","ELM","TAT"];
+const MAT_PLANT_NAMES = {GG:"GulfGuard (KSA)",NK:"Nongkhae (TH)",ELM:"El Marqués (MX)",TAT:"Tatui (BR)"};
+const MAT_FIELDS = ["used","critical","visible","lotCtrl","risk"];
+const MAT_FIELD_LABELS = {used:"Used on Line?",critical:"Quality Critical?",visible:"Visible in M3?",lotCtrl:"Lot-Controlled?",risk:"Risk Level"};
+
+// Pre-loaded Tatui data from Plant_Input TT.xlsx
+const TATUI_DATA = {
+  1:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"High cost, coating quality driver. In addition to the supplier's batch, we create an internal batch after conducting a titration test on the batch."},
+  2:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Critical for adhesion & durability"},
+  3:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Process sensitivity, expensive"},
+  4:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Chemical balance in coating"},
+  5:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Visual appearance & durability. We paint with only one coat for low end mirror, high end mirror and Deco."},
+  6:{used:"No",critical:null,visible:null,lotCtrl:null,risk:null,comment:"Final appearance, customer facing"},
+  7:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Corrosion protection layer"},
+  8:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"✅ Implemented in M3 (Lot-controlled Raw Material)"},
+  9:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"✅ Implemented in M3 (Lot-controlled Raw Material). We recover precious metals (silver sludge + contaminated material and palladium inside the filter + contaminated material)"},
+  10:{used:"No",critical:null,visible:null,lotCtrl:null,risk:null,comment:"Typically not lot-controlled"},
+  11:{used:null,critical:null,visible:null,lotCtrl:null,risk:null,comment:"Plant-specific materials"},
+  12:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Glass polish to guarantee silver adhesion"},
+  13:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"Medium",comment:"Paint viscosity adjustment"},
+  14:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"Low",comment:"Glass final cleaning (end line)"}
+};
+
+// Pre-loaded GulfGuard data from Plant_Input_GulfGuard.xlsx (2026-04-14, Ali Alahmed)
+const GULFGUARD_DATA = {
+  1:{used:"Yes",critical:"Yes",visible:null,lotCtrl:null,risk:"High",comment:"High cost, coating quality driver"},
+  2:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Critical for adhesion & durability"},
+  3:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Process sensitivity, expensive"},
+  4:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Chemical balance in coating"},
+  5:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Visual appearance & durability"},
+  6:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Final appearance, customer facing"},
+  7:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Corrosion protection layer"},
+  8:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"✅ Implemented in M3 (Lot-controlled Raw Material)"},
+  9:{used:"No",critical:"No",visible:"No",lotCtrl:"No",risk:null,comment:"Existing M3 pattern available"},
+  10:{used:"No",critical:"No",visible:"No",lotCtrl:"No",risk:"N/A",comment:"Typically not lot-controlled"},
+  11:{used:null,critical:null,visible:null,lotCtrl:null,risk:null,comment:"Plant-specific materials"}
+};
+
+// Pre-loaded Nongkhae data from responses/Plant_Input_Nongkhae.xlsx (2026-04-08)
+const NONGKHAE_DATA = {
+  1:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"High cost, coating quality driver"},
+  2:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Critical for adhesion & durability"},
+  3:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Process sensitivity, expensive"},
+  4:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Chemical balance in coating"},
+  5:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Visual appearance & durability"},
+  6:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Final appearance, customer facing"},
+  7:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"Corrosion protection layer"},
+  8:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"✅ Implemented in M3 (Lot-controlled Raw Material)"},
+  9:{used:"Yes",critical:"Yes",visible:"Yes",lotCtrl:"Yes",risk:"High",comment:"✅ Implemented in M3 (Lot-controlled Raw Material)"},
+  10:{used:"No",critical:"No",visible:"Yes",lotCtrl:"No",risk:"Low",comment:"Typically not lot-controlled"},
+  11:{used:null,critical:null,visible:null,lotCtrl:null,risk:null,comment:"Plant-specific materials"}
+};
+
+function parseMatPlantExcel(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+  let plantName = null;
+  let completedBy = null;
+  const matData = {};
+  for (let r = 0; r < Math.min(5, data.length); r++) {
+    const row = data[r];
+    if (row) {
+      for (let c = 0; c < row.length; c++) {
+        const v = String(row[c] || "").toLowerCase();
+        if (v.includes("plant name")) { plantName = row[c+1] || row[c+2] || row[c+3]; for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { plantName=row[cc]; break; } }
+        if (v.includes("completed by")) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { completedBy=row[cc]; break; } }
+      }
+    }
+  }
+  let headerRow = -1;
+  for (let r = 0; r < Math.min(10, data.length); r++) {
+    const row = data[r];
+    if (row && row.some(c => String(c||"").includes("#")) && row.some(c => String(c||"").toLowerCase().includes("material"))) { headerRow = r; break; }
+  }
+  if (headerRow < 0) return { plantName, completedBy, matData };
+  const hdr = data[headerRow];
+  let colUsed=-1,colCrit=-1,colVis=-1,colLot=-1,colRisk=-1,colComment=-1,colNum=-1,colCat=-1,colExamples=-1;
+  for (let c=0;c<hdr.length;c++) {
+    const h=String(hdr[c]||"").toLowerCase().replace(/\n/g," ");
+    if (h==="#" || h==="nr" || (h.length<4 && !isNaN(h))) colNum=c;
+    if (h.includes("material category")) colCat=c;
+    if (h.includes("typical examples") || h.includes("examples")) colExamples=c;
+    if (h.includes("used on")) colUsed=c;
+    if (h.includes("quality") && h.includes("critical")) colCrit=c;
+    if (h.includes("visible")) colVis=c;
+    if (h.includes("lot")) colLot=c;
+    if (h.includes("risk")) colRisk=c;
+    if (h.includes("comment") || h.includes("rationale")) colComment=c;
+  }
+  for (let r=headerRow+1; r<data.length; r++) {
+    const row=data[r]; if(!row) continue;
+    const num=row[colNum]; const cat=row[colCat>=0?colCat:1]; const ex=row[colExamples>=0?colExamples:2];
+    if(!num && !cat && !ex) continue;
+    const id=num||r-headerRow;
+    const yn=v=>{const s=String(v||"").trim().toLowerCase();return s==="yes"?"Yes":s==="no"?"No":null;};
+    matData[id]={
+      used:yn(colUsed>=0?row[colUsed]:null),
+      critical:yn(colCrit>=0?row[colCrit]:null),
+      visible:yn(colVis>=0?row[colVis]:null),
+      lotCtrl:yn(colLot>=0?row[colLot]:null),
+      risk:colRisk>=0?row[colRisk]||null:null,
+      comment:colComment>=0?row[colComment]||"":"",
+      catName:cat||null,
+      examples:ex||null
+    };
+  }
+  return { plantName: plantName ? String(plantName).trim() : null, completedBy, matData };
+}
+
+function parseQCTestExcel(wb) {
+  // Parse Plant_Identification tab
+  const idSheet = wb.Sheets["Plant_Identification"];
+  let plantName = null, completedBy = null, system = null, gpisAll = null, gpisLinked = null, altSystem = null;
+  if (idSheet) {
+    const idData = XLSX.utils.sheet_to_json(idSheet, {header:1, defval:null});
+    for (let r = 0; r < idData.length; r++) {
+      const row = idData[r]; if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        const v = String(row[c] || "").toLowerCase();
+        if (v.includes("plant name")) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { plantName=String(row[cc]).trim(); break; } }
+        if (v.includes("completed by")) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { completedBy=String(row[cc]).trim(); break; } }
+        if (v.includes("where are mirror") || (v.includes("q1") && v.includes("recorded"))) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { system=String(row[cc]).trim(); break; } }
+        if (v.includes("all mirror") || (v.includes("q2") && v.includes("gpis"))) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { gpisAll=String(row[cc]).trim(); break; } }
+        if (v.includes("linked") || (v.includes("q3") && v.includes("gpis"))) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { gpisLinked=String(row[cc]).trim(); break; } }
+        if (v.includes("not gpis") || (v.includes("q4") && v.includes("not"))) { for (let cc=c+1;cc<row.length;cc++) if(row[cc]) { altSystem=String(row[cc]).trim(); break; } }
+      }
+    }
+  }
+  // Parse QC_Test_Review tab
+  const qcSheet = wb.Sheets["QC_Test_Review"];
+  const tests = [];
+  if (qcSheet) {
+    const qcData = XLSX.utils.sheet_to_json(qcSheet, {header:1, defval:null});
+    let headerRow = -1;
+    for (let r = 0; r < Math.min(10, qcData.length); r++) {
+      const row = qcData[r]; if (!row) continue;
+      if (row.some(c => String(c||"") === "#") && row.some(c => String(c||"").toLowerCase().includes("qc test"))) { headerRow = r; break; }
+    }
+    if (headerRow >= 0) {
+      const hdr = qcData[headerRow];
+      let cNum=-1,cName=-1,cPurpose=-1,cType=-1,cPerf=-1,cFreq=-1,cTool=-1,cMode=-1,cWhere=-1,cComment=-1;
+      for (let c=0;c<hdr.length;c++) {
+        const h=String(hdr[c]||"").toLowerCase().replace(/\n/g," ");
+        if (h==="#") cNum=c;
+        if (h.includes("qc test")) cName=c;
+        if (h.includes("purpose")) cPurpose=c;
+        if (h.includes("test type")) cType=c;
+        if (h.includes("performed")) cPerf=c;
+        if (h.includes("frequency")) cFreq=c;
+        if (h.includes("tool") || h.includes("measuring")) cTool=c;
+        if (h.includes("manual") || h.includes("automatic")) cMode=c;
+        if (h.includes("where") || h.includes("recorded")) cWhere=c;
+        if (h.includes("comment")) cComment=c;
+      }
+      for (let r=headerRow+1; r<qcData.length; r++) {
+        const row = qcData[r]; if (!row) continue;
+        const num = cNum>=0 ? row[cNum] : null;
+        const name = cName>=0 ? row[cName] : null;
+        if (!num && !name) continue;
+        if (String(name||"").toLowerCase().includes("summary") || String(name||"").toLowerCase().includes("other")) continue;
+        const performed = cPerf>=0 ? String(row[cPerf]||"").toLowerCase() : "";
+        const isPerformed = performed === "yes";
+        const isNotPerformed = performed.includes("not");
+        tests.push({
+          num: num,
+          name: String(name||"").trim(),
+          purpose: cPurpose>=0 ? String(row[cPurpose]||"").trim() : "",
+          type: cType>=0 ? String(row[cType]||"").trim() : "",
+          performed: isPerformed ? "Yes" : (isNotPerformed ? "No" : "Unknown"),
+          freq: cFreq>=0 ? String(row[cFreq]||"").trim() : "",
+          tool: cTool>=0 ? String(row[cTool]||"").trim() : "",
+          mode: cMode>=0 ? String(row[cMode]||"").trim() : "",
+          where: cWhere>=0 ? String(row[cWhere]||"").trim() : "",
+          comment: cComment>=0 ? String(row[cComment]||"").trim() : ""
+        });
+      }
+    }
+  }
+  const pid = detectPlantId(plantName);
+  return { plantName, completedBy, system, gpisAll, gpisLinked, altSystem, pid, tests };
+}
+
+// Match imported test name to TESTS array index
+function matchTestIndex(importName, testsArr) {
+  const ln = importName.toLowerCase().replace(/[^a-z0-9 ]/g,"").trim();
+  const testNames = [
+    ["chemical resistance","cass","120"],["silver adhesion"],["adhesion of paint","paint film"],
+    ["reflectance"],["paint dry film","film thickness"],["nitric acid"],["hcl dip","10% hcl"],
+    ["silver deposition"],["pendulum hardness"],["solvent rub"],["powder coverage"],
+    ["branding ink rub"],["paint side inspection"],["face side inspection"],["edge grinding"],
+    ["pinhole inspection","pinhole"],["speed cass","cass 1.5"],["branding code"],
+    ["lite thickness"],["lite size","length & width","length"],["lite squareness","squareness"],
+    ["condensation","hthh"],["p2 mirror","p2 miror","scanner"],["ferric"],["impact test"],
+    ["flash light"],["sand blasting","sandblasting"],["resin thickness"],["paint weight"],
+    ["uv roller"],["uv resin"],["ammonia"],["salt fog"],["paint hardner","paint hardness","sclerometer"]
+  ];
+  for (let i = 0; i < testNames.length && i < testsArr.length; i++) {
+    if (testNames[i].some(kw => ln.includes(kw))) return i;
+  }
+  return -1;
+}
+
+function detectPlantId(plantName) {
+  if (!plantName) return null;
+  const n = plantName.toLowerCase();
+  if (n.includes("gulfguard") || n.includes("ksa")) return "GG";
+  if (n.includes("nongkhae") || n.includes("th)") || n.includes("thailand")) return "NK";
+  if (n.includes("marqués") || n.includes("marques") || n.includes("mx)") || n.includes("mexico")) return "ELM";
+  if (n.includes("tatui") || n.includes("br)") || n.includes("brazil")) return "TAT";
+  if (n.includes("gujarat") || n.includes("ggl")) return null; // Exclude GGL
+  return null;
+}
+
+const wcoTypeColor = { "Qualitative":"#E0E7FF", "Quantitative":"#DCFCE7", "Numeric":"#FEF3C7" };
+const wcoTypeColorDark = { "Qualitative":"#3730A3", "Quantitative":"#166534", "Numeric":"#92400E" };
+
+function suggestWCOMapping(testName) {
+  const lowerTest = testName.toLowerCase();
+  const suggestions = WCO_CATALOG.map(w => {
+    const lowerDesc = w.desc.toLowerCase();
+    let score = 0;
+    if (lowerTest.includes(lowerDesc) || lowerDesc.includes(lowerTest)) score = 100;
+    else if (lowerTest.split(" ").some(word => lowerDesc.includes(word)) && lowerTest.length > 3) score = 80;
+    return { ...w, score };
+  }).filter(w => w.score > 0).sort((a, b) => b.score - a.score);
+  return suggestions.length > 0 ? suggestions[0].code : null;
+}
+
+const scoreColor = s => s===3?GREEN:s===1?RED:"#CBD5E1";
+const scoreLabel = s => s===3?"✓":s===1?"✗":"—";
+const statusColor = s => s==="received"?GREEN:s==="pending"?YELLOW:RED;
+const statusIcon = s => s==="received"?"✅":s==="pending"?"⏳":"🔴";
+const typeStyle = t => ({Destructive:{bg:"#FEE2E2",c:"#991B1B"},Visual:{bg:"#E0E7FF",c:"#3730A3"},Dimensional:{bg:"#DBEAFE",c:"#1E40AF"},"Plant-specific":{bg:"#FEF3C7",c:"#92400E"}}[t]||{bg:"#F1F5F9",c:"#555"});
+
+function Tip({plant, data}) {
+  if (!data.f || data.f === "—" || data.f === "") return null;
+  return <div className="tip"><strong>{plant}</strong><br/>Freq: {data.f}<br/>Tool: {data.t}<br/>{data.m && <>Mode: {data.m}<br/></>}{data.w && <>Recorded: {data.w}</>}</div>;
+}
+
+function App() {
+  const [filter, setFilter] = useState("all");
+  const [view, setView] = useState("overview");
+  const [selectedPlant, setSelectedPlant] = useState("NK");
+  const [qiConfigs, setQiConfigs] = useState({});
+  const [pathOverrides, setPathOverrides] = useState({});
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [newCustom, setNewCustom] = useState({ code:"", desc:"", tty:"Qualitative", expMax:"", expMin:"", target:"", dec:0, tst:"", uom:"" });
+  const [generalTestResult, setGeneralTestResult] = useState({});
+  const [qiFreqA, setQiFreqA] = useState({});  // Path A: QI Request frequency per plant
+  const [qiFreqB, setQiFreqB] = useState({});  // Path B: QI Request frequency per plant
+  const [matPlantData, setMatPlantData] = useState({TAT: TATUI_DATA, NK: NONGKHAE_DATA, GG: GULFGUARD_DATA});
+  const [matUploadLog, setMatUploadLog] = useState([
+    {plant:"Tatui (BR)",id:"TAT",file:"Plant_Input TT.xlsx",date:"Pre-loaded",by:"André Chieus and Laura Lourenço"},
+    {plant:"Nongkhae (TH)",id:"NK",file:"Plant_Input_Nongkhae.xlsx",date:"Pre-loaded 2026-04-08",by:"Pathomwit T."},
+    {plant:"GulfGuard (KSA)",id:"GG",file:"Plant_Input_GulfGuard.xlsx",date:"Pre-loaded 2026-04-14",by:"Ali Alahmed"}
+  ]);
+  const [matDragOver, setMatDragOver] = useState(false);
+  const [qcImports, setQcImports] = useState({});
+  const [qcImportLog, setQcImportLog] = useState([]);
+  const [showVersionInfo, setShowVersionInfo] = useState(false);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [qcDragOver, setQcDragOver] = useState(false);
+  const [rmTests, setRmTests] = useState([]);
+  const [showAddRmTest, setShowAddRmTest] = useState(false);
+  const [newRmTest, setNewRmTest] = useState({code:"",desc:"",tty:"Qualitative",expMax:"",expMin:"",target:"",dec:0,tst:"PASS",uom:"",freq:1,material:"",note:""});
+  const [matExtraMaterials, setMatExtraMaterials] = useState({});
+
+  const handleMatFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, {type:"array"});
+        const parsed = parseMatPlantExcel(wb);
+        const pid = detectPlantId(parsed.plantName);
+        if (!pid) { alert("Could not detect plant from file. Plant name found: " + (parsed.plantName || "none") + "\n\nExpected: GulfGuard (KSA), Nongkhae (TH), El Marqués (MX), or Tatui (BR).\nNote: GGL (Gujarat) is excluded."); return; }
+        setMatPlantData(prev => ({...prev, [pid]: parsed.matData}));
+        const extras = {};
+        Object.entries(parsed.matData).forEach(([id, d]) => {
+          if (parseInt(id) > 11 && d.catName) { extras[id] = {cat: d.catName, examples: d.examples || d.catName, note: d.comment || "", plantSpecific: pid}; }
+        });
+        if (Object.keys(extras).length > 0) setMatExtraMaterials(prev => ({...prev, ...extras}));
+        setMatUploadLog(prev => [...prev.filter(l => l.id !== pid), {plant: MAT_PLANT_NAMES[pid], id: pid, file: file.name, date: new Date().toLocaleString(), by: parsed.completedBy || "—"}]);
+      } catch(err) { alert("Error reading file: " + err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleQCFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, {type:"array"});
+        const parsed = parseQCTestExcel(wb);
+        if (!parsed.pid) { alert("Could not detect plant from file. Plant name found: " + (parsed.plantName || "none")); return; }
+        // Build test override map for this plant
+        const overrides = {};
+        parsed.tests.forEach(t => {
+          const idx = matchTestIndex(t.name, TESTS);
+          if (idx >= 0) {
+            if (t.performed === "Yes") {
+              overrides[idx] = {s:3, f:t.freq||"TBD", t:t.tool||"TBD", m:t.mode||"Manual", w:t.where||""};
+            } else if (t.performed === "No") {
+              overrides[idx] = {s:1, f:"Not performed", t:"\u2014", m:"\u2014"};
+            }
+          }
+        });
+        // Check for new tests not in TESTS array
+        const newTests = parsed.tests.filter(t => {
+          const idx = matchTestIndex(t.name, TESTS);
+          return idx < 0 && t.performed === "Yes";
+        });
+        setQcImports(prev => ({...prev, [parsed.pid]: {overrides, newTests, plantInfo:{system:parsed.system, gpisAll:parsed.gpisAll, completedBy:parsed.completedBy}}}));
+        setQcImportLog(prev => [...prev.filter(l => l.id !== parsed.pid), {
+          id: parsed.pid,
+          plant: parsed.plantName,
+          file: file.name,
+          date: new Date().toLocaleString(),
+          by: parsed.completedBy || "\u2014",
+          testsPerformed: parsed.tests.filter(t => t.performed === "Yes").length,
+          testsTotal: parsed.tests.length
+        }]);
+        alert("\u2705 Loaded " + parsed.tests.filter(t=>t.performed==="Yes").length + " tests for " + parsed.plantName + " (" + parsed.pid + ").\nData is now overlaid on the dashboard.");
+      } catch(err) { alert("Error reading QC file: " + err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Merge hardcoded TESTS with runtime imports
+  const getTestData = (testIdx, plantId) => {
+    const imp = qcImports[plantId];
+    if (imp && imp.overrides && imp.overrides[testIdx] !== undefined) return imp.overrides[testIdx];
+    return TESTS[testIdx][plantId];
+  };
+
+  const received = PLANTS.filter(p=>p.status==="received").length;
+  const pending = PLANTS.filter(p=>p.status==="pending").length;
+  const overdue = PLANTS.filter(p=>p.status==="overdue").length;
+  const filteredTests = useMemo(()=> filter==="all"?TESTS:TESTS.filter(t=>t.type===filter),[filter]);
+
+  const stats = useMemo(()=>{
+    let aligned=0,divergent=0,totalGaps=0,ggP=0,nkP=0,elmP=0,tatP=0;
+    TESTS.forEach(t=>{const sc=[t.GG.s,t.NK.s,t.ELM.s,t.TAT.s],perf=sc.filter(s=>s===3).length,gaps=sc.filter(s=>s===1).length;
+      totalGaps+=gaps;if(t.GG.s===3)ggP++;if(t.NK.s===3)nkP++;if(t.ELM.s===3)elmP++;if(t.TAT.s===3)tatP++;
+      if(perf>=3)aligned++;else if(perf>0&&gaps>0)divergent++;});
+    return{aligned,divergent,totalGaps,total:TESTS.length,ggP,nkP,elmP,tatP};
+  },[]);
+
+  const gapTests = useMemo(()=>TESTS.filter(t=>[t.GG.s,t.NK.s,t.ELM.s,t.TAT.s].some(s=>s===1))
+    .map(t=>{const ids=["GG","NK","ELM","TAT"],names=["GulfGuard","Nongkhae","El Marqués","Tatui"];
+      const gp=ids.map((id,i)=>t[id].s===1?{id,name:names[i],reason:t[id].f}:null).filter(Boolean);
+      return{...t,gapPlants:gp,gapCount:gp.length};}).sort((a,b)=>b.gapCount-a.gapCount),[]);
+
+  const elmSystems = useMemo(()=>{const c={};TESTS.forEach(t=>{if(t.ELM.w){c[t.ELM.w]=(c[t.ELM.w]||0)+1;}}); return Object.entries(c).sort((a,b)=>b[1]-a[1]);},[]);
+
+  const currentPlant = PLANTS.find(p => p.id === selectedPlant) || PLANTS[0];
+  const defaultPath = currentPlant.gpisUsed === "Yes" ? "A" : (currentPlant.gpisUsed === "No" ? "B" : "A");
+  const selectedPath = pathOverrides[selectedPlant] || defaultPath;
+  const isPathA = selectedPath === "A";
+  const isGPIS = isPathA;
+
+  const getPlantCfg = (prev, pid) => prev[pid] || { path: currentPlant.gpisUsed === "No" ? "Full" : "GPIS", tests: {} };
+  const getTests = (prev, pid) => (prev[pid] && prev[pid].tests) ? prev[pid].tests : {};
+  const getTest = (prev, pid, code) => { const t = getTests(prev, pid); return t[code] || null; };
+  const getTestEnabled = (prev, pid, code) => { const t = getTest(prev, pid, code); return t ? t.enabled : true; };
+  const getTestVal = (cfg, code, field) => {
+    const t = (cfg && cfg.tests) ? cfg.tests[code] : null;
+    if (t && t[field] !== undefined) return t[field];
+    const cat = WCO_CATALOG.find(w => w.code === code);
+    return cat ? cat[field] : null;
+  };
+
+  const toggleTest = (plantId, wcoCode) => {
+    setQiConfigs(prev => {
+      const pc = getPlantCfg(prev, plantId);
+      const ts = getTests(prev, plantId);
+      const wasEnabled = getTestEnabled(prev, plantId, wcoCode);
+      const catEntry = WCO_CATALOG.find(w => w.code === wcoCode) || {};
+      return { ...prev, [plantId]: { ...pc, tests: { ...ts, [wcoCode]: { enabled: !wasEnabled, ...catEntry } } } };
+    });
+  };
+
+  const updateTestValue = (plantId, wcoCode, field, value) => {
+    setQiConfigs(prev => {
+      const pc = getPlantCfg(prev, plantId);
+      const ts = getTests(prev, plantId);
+      const existing = getTest(prev, plantId, wcoCode) || WCO_CATALOG.find(w => w.code === wcoCode) || {};
+      const wasEnabled = (existing.enabled !== undefined) ? existing.enabled : true;
+      const parsed = field === "dec" ? parseInt(value) : (["expMax","expMin","target","freq"].includes(field) ? parseFloat(value) : value);
+      return { ...prev, [plantId]: { ...pc, tests: { ...ts, [wcoCode]: { ...existing, enabled: wasEnabled, [field]: parsed } } } };
+    });
+  };
+
+  const addCustomTest = () => {
+    // Auto-generate WCO code if empty (CUSTOM_001, CUSTOM_002, ...)
+    let code = (newCustom.code || "").trim();
+    const pc0 = getPlantCfg(qiConfigs, selectedPlant);
+    const existingCodes = Object.keys((pc0 && pc0.tests) || {}).concat(WCO_CATALOG.map(w=>w.code));
+    if (!code) {
+      let n = 1;
+      while (existingCodes.includes("CUSTOM_" + String(n).padStart(3,"0"))) n++;
+      code = "CUSTOM_" + String(n).padStart(3,"0");
+    }
+    if (existingCodes.includes(code)) { alert("Test code '" + code + "' already exists. Please choose a different code."); return; }
+    const desc = (newCustom.desc || "").trim() || "(no description — please edit)";
+    const tty = newCustom.tty || "Qualitative";
+    const entry = {
+      code: code, desc: desc, tty: tty, enabled: true, custom: true,
+      expMax: newCustom.expMax === "" ? 0 : parseFloat(newCustom.expMax) || 0,
+      expMin: newCustom.expMin === "" ? 0 : parseFloat(newCustom.expMin) || 0,
+      target: newCustom.target === "" ? 0 : parseFloat(newCustom.target) || 0,
+      dec: parseInt(newCustom.dec) || 0,
+      uom: newCustom.uom || "",
+      tst: tty === "Qualitative" ? (newCustom.tst || "PASS") : ""
+    };
+    setQiConfigs(prev => {
+      const pc = getPlantCfg(prev, selectedPlant);
+      const ts = getTests(prev, selectedPlant);
+      return { ...prev, [selectedPlant]: { ...pc, tests: { ...ts, [code]: entry } } };
+    });
+    setNewCustom({ code:"", desc:"", tty:"Qualitative", expMax:"", expMin:"", target:"", dec:0, tst:"", uom:"" });
+    setShowAddCustom(false);
+  };
+
+  // Remove/delete a test from a plant's config (works for both WCO_CATALOG and custom tests)
+  const removeTestFromPlant = (plantId, wcoCode) => {
+    if (!confirm("Remove test '" + wcoCode + "' from this plant's configuration?\n\n(You can restore built-in WCO tests by clicking 'Reset Plant' below.)")) return;
+    setQiConfigs(prev => {
+      const pc = getPlantCfg(prev, plantId);
+      const ts = { ...getTests(prev, plantId) };
+      // Mark as removed — filtering logic below hides rows where removed=true
+      const existing = ts[wcoCode] || WCO_CATALOG.find(w => w.code === wcoCode) || { code: wcoCode };
+      ts[wcoCode] = { ...existing, removed: true, enabled: false };
+      return { ...prev, [plantId]: { ...pc, tests: ts } };
+    });
+  };
+
+  const resetPlantConfig = (plantId) => {
+    if (!confirm("Reset ALL WCO tests for this plant to defaults? This will un-remove deleted tests and revert all overrides.")) return;
+    setQiConfigs(prev => { const n = {}; for (const k in prev) if (k !== plantId) n[k] = prev[k]; return n; });
+  };
+
+  const getExportData = () => {
+    const qiRequestFreq = isPathA ? (qiFreqA[selectedPlant] || "TBD") : (qiFreqB[selectedPlant] || "TBD");
+    if (isPathA) {
+      return {
+        plant: currentPlant.name,
+        plantId: selectedPlant,
+        path: "A (GPIS to M3)",
+        qiRequestFrequency: qiRequestFreq,
+        timestamp: new Date().toISOString(),
+        tests: [{
+          code: "WCO001",
+          desc: "Wet Coater Glass GPIS Pass/Fail",
+          tty: "2-Qualitative",
+          enabled: true,
+          result: generalTestResult[selectedPlant] || "PASS",
+          target: 0, expMin: 0, expMax: 0
+        }]
+      };
+    }
+    const pc = qiConfigs[selectedPlant] || { path: "Full", tests: {} };
+    const pcTests = pc.tests || {};
+    const catalogTests = WCO_CATALOG
+      .filter(wco => !(pcTests[wco.code] && pcTests[wco.code].removed))
+      .map(wco => {
+        const t = pcTests[wco.code] || {};
+        const enabled = (t.enabled !== undefined) ? t.enabled : true;
+        return {
+          code: wco.code,
+          desc: t.desc || wco.desc,
+          tty: t.tty || wco.tty,
+          enabled: enabled,
+          expMax: (t.expMax !== undefined) ? t.expMax : wco.expMax,
+          expMin: (t.expMin !== undefined) ? t.expMin : wco.expMin,
+          target: (t.target !== undefined) ? t.target : wco.target,
+          dec: (t.dec !== undefined) ? t.dec : wco.dec,
+          uom: t.uom || wco.uom || "",
+          tst: t.tst || wco.tst || "",
+          source: "WCO Catalog"
+        };
+      });
+    const customTests = Object.values(pcTests)
+      .filter(t => t && t.custom && !t.removed && !WCO_CATALOG.find(w => w.code === t.code))
+      .map(t => ({
+        code: t.code,
+        desc: t.desc,
+        tty: t.tty,
+        enabled: (t.enabled !== false),
+        expMax: t.expMax || 0,
+        expMin: t.expMin || 0,
+        target: t.target || 0,
+        dec: t.dec || 0,
+        uom: t.uom || "",
+        tst: t.tst || "",
+        source: "Custom"
+      }));
+    const allTests = [...catalogTests, ...customTests];
+    return { plant: currentPlant.name, plantId: selectedPlant, path: "B (Full M3 QI)", qiRequestFrequency: qiRequestFreq, timestamp: new Date().toISOString(), tests: allTests };
+  };
+
+  const downloadFile = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportJSON = () => {
+    const data = getExportData();
+    downloadFile(JSON.stringify(data, null, 2), "M3_QI_Config_" + selectedPlant + ".json", "application/json");
+  };
+
+  const exportCSV = () => {
+    const data = getExportData();
+    const header = "WCO Code,Description,Type,Enabled,Expected Max,Expected Min,Target,Decimals,UoM,Test Result";
+    const rows = data.tests.map(t =>
+      [t.code, '"'+t.desc+'"', t.tty, t.enabled?"Yes":"No", t.expMax, t.expMin, t.target, t.dec, t.uom, t.tst].join(",")
+    );
+    const csv = "Plant: " + data.plant + "\nPath: " + data.path + "\nQI Request Frequency: " + data.qiRequestFrequency + "\nDate: " + data.timestamp + "\n\n" + header + "\n" + rows.join("\n");
+    downloadFile(csv, "M3_QI_Config_" + selectedPlant + ".csv", "text/csv");
+  };
+
+  const exportTSV = () => {
+    const data = getExportData();
+    const header = "WCO Code\tDescription\tType\tEnabled\tExpected Max\tExpected Min\tTarget\tDecimals\tUoM\tTest Result";
+    const rows = data.tests.map(t =>
+      [t.code, t.desc, t.tty, t.enabled?"Yes":"No", t.expMax, t.expMin, t.target, t.dec, t.uom, t.tst].join("\t")
+    );
+    const tsv = "QI Request Frequency: " + data.qiRequestFrequency + "\n\n" + header + "\n" + rows.join("\n");
+    downloadFile(tsv, "M3_QI_Config_" + selectedPlant + ".xls", "application/vnd.ms-excel");
+  };
+
+  // Professional multi-sheet Excel export using XLSX library
+  const exportExcelPro = () => {
+    const wb = XLSX.utils.book_new();
+    const today = new Date().toISOString().slice(0,10);
+    const plantName = currentPlant.name;
+
+    // Helper: apply styles to a sheet
+    const setColWidths = (ws, widths) => { ws["!cols"] = widths.map(w => ({wch: w})); };
+    const setMerges = (ws, merges) => { ws["!merges"] = merges; };
+
+    // === SHEET 1: COVER / SUMMARY ===
+    const coverData = [
+      ["GlobalCore M3 — Mirror/Wet Coater Readiness Dashboard"],
+      ["QI Configuration Export — " + plantName],
+      [],
+      ["Export Date:", today],
+      ["Dashboard Version:", DASHBOARD_VERSION],
+      ["Plant:", plantName],
+      ["Plant ID:", selectedPlant],
+      ["Region:", currentPlant.region],
+      ["System:", currentPlant.system],
+      ["GPIS Used:", currentPlant.gpisUsed],
+      ["Integration Path:", isPathA ? "Path A (GPIS → M3 WCO001 PASS/FAIL)" : "Path B (Full M3 QI Request)"],
+      ["QI Request Frequency:", isPathA ? (qiFreqA[selectedPlant]||"TBD") : (qiFreqB[selectedPlant]||"TBD")],
+      ["Data Owner:", "Robert Skowron, Global Quality SME"],
+      [],
+      ["—— Configuration Summary ——"],
+    ];
+    const pcfg = qiConfigs[selectedPlant];
+    const pcfgTests = (pcfg && pcfg.tests) ? pcfg.tests : {};
+    if (isPathA) {
+      coverData.push(["WCO001 Current Result:", generalTestResult[selectedPlant] || "PASS"]);
+    } else {
+      const catalogVisible = WCO_CATALOG.filter(w => !(pcfgTests[w.code] && pcfgTests[w.code].removed));
+      const customTests = Object.values(pcfgTests).filter(t => t && t.custom && !t.removed);
+      const enabled = catalogVisible.filter(w => { const t = pcfgTests[w.code]; return !t || t.enabled !== false; });
+      coverData.push(["Built-in WCO Tests:", catalogVisible.length + " visible / " + WCO_CATALOG.length + " total"]);
+      coverData.push(["Enabled Tests:", enabled.length]);
+      coverData.push(["Custom Tests Added:", customTests.length]);
+      coverData.push(["Removed Tests:", WCO_CATALOG.length - catalogVisible.length]);
+    }
+    const wsCover = XLSX.utils.aoa_to_sheet(coverData);
+    setColWidths(wsCover, [30, 50]);
+    setMerges(wsCover, [{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}},{s:{r:14,c:0},e:{r:14,c:1}}]);
+    XLSX.utils.book_append_sheet(wb, wsCover, "Summary");
+
+    // === SHEET 2: QI CONFIG (Path-specific) ===
+    if (isPathA) {
+      const aoa = [
+        ["Path A — GPIS to M3 WCO001 PASS/FAIL"],
+        [],
+        ["QI Request Frequency:", qiFreqA[selectedPlant] || "TBD"],
+        [],
+        ["WCO Code","Description","Type","Expected Max","Expected Min","Target","Decimals","UoM","Current Result"],
+        ["WCO001","Wet Coater Glass GPIS Pass/Fail","2-Qualitative",0,0,0,0,"",generalTestResult[selectedPlant]||"PASS"]
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      setColWidths(ws, [14, 40, 16, 14, 14, 10, 10, 8, 14]);
+      setMerges(ws, [{s:{r:0,c:0},e:{r:0,c:8}}]);
+      XLSX.utils.book_append_sheet(wb, ws, "QI Config Path A");
+    } else {
+      const aoa = [
+        ["Path B — Full M3 QI Request (WCO Tests with Parameters)"],
+        [],
+        ["QI Request Frequency:", qiFreqB[selectedPlant] || "TBD"],
+        [],
+        ["#","WCO Code","Description","Type","Enabled","Expected Max","Expected Min","Target","Decimals","UoM","Expected Result","Source"]
+      ];
+      const allRows = [];
+      WCO_CATALOG.forEach(w => { if (!(pcfgTests[w.code] && pcfgTests[w.code].removed)) allRows.push(w); });
+      Object.values(pcfgTests).forEach(t => { if (t && t.custom && !t.removed && !WCO_CATALOG.find(w => w.code === t.code)) allRows.push(t); });
+      allRows.forEach((w, i) => {
+        const t = pcfgTests[w.code] || {};
+        const tty = t.tty || w.tty;
+        const isQ = tty === "Qualitative";
+        const enabled = t.enabled !== false;
+        aoa.push([
+          i+1,
+          w.code,
+          t.desc || w.desc,
+          tty,
+          enabled ? "Yes" : "No",
+          isQ ? "—" : (t.expMax !== undefined ? t.expMax : w.expMax),
+          isQ ? "—" : (t.expMin !== undefined ? t.expMin : w.expMin),
+          isQ ? "—" : (t.target !== undefined ? t.target : w.target),
+          isQ ? "—" : (t.dec !== undefined ? t.dec : w.dec),
+          isQ ? "—" : (t.uom || w.uom || ""),
+          isQ ? (t.tst || w.tst || "PASS") : "—",
+          w.custom ? "Custom" : "WCO Catalog"
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      setColWidths(ws, [4, 14, 40, 16, 10, 14, 14, 12, 10, 10, 14, 14]);
+      setMerges(ws, [{s:{r:0,c:0},e:{r:0,c:11}}]);
+      XLSX.utils.book_append_sheet(wb, ws, "QI Config Path B");
+    }
+
+    // === SHEET 3: QC TESTS (current plant) ===
+    const qcAoa = [
+      ["QC Tests Overview — " + plantName],
+      [],
+      ["#","QC Test","Purpose","Test Type","Status","Frequency","Tool","Mode","Recorded In"]
+    ];
+    TESTS.forEach((t, i) => {
+      const d = t[selectedPlant] || {};
+      const statusStr = d.s === 3 ? "Performed" : d.s === 1 ? "Not Performed" : "N/A";
+      if (d.s !== undefined) qcAoa.push([i+1, t.full || t.name, t.purpose, t.type, statusStr, d.f || "—", d.t || "—", d.m || "—", d.w || "—"]);
+    });
+    const wsQc = XLSX.utils.aoa_to_sheet(qcAoa);
+    setColWidths(wsQc, [4, 34, 30, 14, 14, 22, 22, 12, 14]);
+    setMerges(wsQc, [{s:{r:0,c:0},e:{r:0,c:8}}]);
+    XLSX.utils.book_append_sheet(wb, wsQc, "QC Tests");
+
+    // === SHEET 4: RAW MATERIALS (consolidated for current plant) ===
+    const matAoa = [
+      ["Raw Materials — " + plantName],
+      [],
+      ["#","Material Category","Typical Examples","Used on Line?","Quality Critical?","Visible in M3?","Lot-Controlled?","Risk Level","Comments"]
+    ];
+    const pd = matPlantData[selectedPlant] || {};
+    const allMats = [...MATERIALS, ...Object.entries(matExtraMaterials)
+      .filter(([id]) => !MATERIALS.find(m => m.id == id))
+      .map(([id,d]) => ({id:parseInt(id),cat:d.cat,examples:d.examples,note:d.note}))];
+    allMats.forEach(m => {
+      const d = pd[m.id] || {};
+      matAoa.push([m.id, m.cat, m.examples, d.used || "—", d.critical || "—", d.visible || "—", d.lotCtrl || "—", d.risk || "—", d.comment || m.note || ""]);
+    });
+    const wsMat = XLSX.utils.aoa_to_sheet(matAoa);
+    setColWidths(wsMat, [4, 28, 32, 12, 14, 12, 14, 10, 40]);
+    setMerges(wsMat, [{s:{r:0,c:0},e:{r:0,c:8}}]);
+    XLSX.utils.book_append_sheet(wb, wsMat, "Raw Materials");
+
+    // === SHEET 5: RM QI TESTS (if any) ===
+    if (rmTests.length > 0) {
+      const rmAoa = [
+        ["Raw Material QI Tests — " + plantName],
+        [],
+        ["#","Code","Description","Material","Type","Expected Result","Max","Min","Target","Decimals","UoM","Samples/Lot","Note"]
+      ];
+      rmTests.forEach((t, i) => {
+        const isQ = t.tty === "Qualitative";
+        rmAoa.push([i+1, t.code, t.desc, t.material||"", t.tty||"", isQ ? (t.tst||"PASS") : "—", isQ ? "—" : t.expMax, isQ ? "—" : t.expMin, isQ ? "—" : t.target, t.dec, t.uom||"—", t.freq, t.note||""]);
+      });
+      const wsRm = XLSX.utils.aoa_to_sheet(rmAoa);
+      setColWidths(wsRm, [4, 12, 28, 20, 14, 14, 10, 10, 10, 10, 10, 12, 30]);
+      setMerges(wsRm, [{s:{r:0,c:0},e:{r:0,c:12}}]);
+      XLSX.utils.book_append_sheet(wb, wsRm, "RM QI Tests");
+    }
+
+    // === SHEET 6: ALL PLANTS OVERVIEW ===
+    const overAoa = [
+      ["All Plants Overview"],
+      [],
+      ["Plant","Region","Status","Date Received","System","GPIS Used","Recommended Path","Notes"]
+    ];
+    PLANTS.forEach(p => {
+      const isGpis = p.gpisUsed === "Yes";
+      const path = isGpis ? "Path A (GPIS)" : p.gpisUsed === "No" ? "Path B (Full QI)" : "TBD";
+      overAoa.push([p.name, p.region, p.status, p.dateReceived || "—", p.system, p.gpisUsed, path, p.note || ""]);
+    });
+    const wsOver = XLSX.utils.aoa_to_sheet(overAoa);
+    setColWidths(wsOver, [20, 10, 12, 14, 20, 10, 20, 40]);
+    setMerges(wsOver, [{s:{r:0,c:0},e:{r:0,c:7}}]);
+    XLSX.utils.book_append_sheet(wb, wsOver, "All Plants");
+
+    // Write & download
+    const filename = "M3_QI_Config_" + selectedPlant + "_" + today + ".xlsx";
+    XLSX.writeFile(wb, filename);
+  };
+
+  // ============ FULL STATE EXPORT / IMPORT (for GitHub Pages sharing) ============
+  const exportFullState = () => {
+    const state = {
+      version: DASHBOARD_VERSION,
+      exportedAt: new Date().toISOString(),
+      exportedBy: "Dashboard user",
+      note: "Full dashboard state export — import this file into another instance of the dashboard to sync.",
+      qiConfigs,
+      pathOverrides,
+      generalTestResult,
+      qiFreqA,
+      qiFreqB,
+      matPlantData,
+      matUploadLog,
+      matExtraMaterials,
+      rmTests,
+      qcImports,
+      qcImportLog
+    };
+    const today = new Date().toISOString().slice(0,10);
+    downloadFile(JSON.stringify(state, null, 2), "M3_Dashboard_State_" + today + ".json", "application/json");
+  };
+
+  const importFullState = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const state = JSON.parse(e.target.result);
+        if (!state.version) throw new Error("Not a valid dashboard state file");
+        if (!confirm("Import full dashboard state from " + (state.exportedAt || "file") + "?\n\nThis will OVERWRITE your current edits (QI Configs, Results, Raw Materials, RM Tests, etc.).")) return;
+        if (state.qiConfigs) setQiConfigs(state.qiConfigs);
+        if (state.pathOverrides) setPathOverrides(state.pathOverrides);
+        if (state.generalTestResult) setGeneralTestResult(state.generalTestResult);
+        if (state.qiFreqA) setQiFreqA(state.qiFreqA);
+        if (state.qiFreqB) setQiFreqB(state.qiFreqB);
+        if (state.matPlantData) setMatPlantData(state.matPlantData);
+        if (state.matUploadLog) setMatUploadLog(state.matUploadLog);
+        if (state.matExtraMaterials) setMatExtraMaterials(state.matExtraMaterials);
+        if (state.rmTests) setRmTests(state.rmTests);
+        if (state.qcImports) setQcImports(state.qcImports);
+        if (state.qcImportLog) setQcImportLog(state.qcImportLog);
+        alert("✅ Dashboard state imported successfully from " + (state.exportedAt || "file") + ".");
+      } catch (err) { alert("❌ Error importing state: " + err.message); }
+    };
+    reader.readAsText(file);
+  };
+
+  const btn=(l,v,cur,light)=>{return{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,
+    background:cur===v?(light?"#fff":NAVY):(light?"rgba(255,255,255,0.15)":"#E2E8F0"),
+    color:cur===v?(light?NAVY:"#fff"):(light?"#fff":"#555"),transition:"all .2s"}};
+
+  return (
+    <div style={{padding:24,minHeight:"100vh"}}>
+      <div style={{maxWidth:1280,margin:"0 auto"}}>
+        <div style={{background:`linear-gradient(135deg,${NAVY} 0%,${BLUE} 100%)`,borderRadius:16,padding:"28px 36px",marginBottom:24,color:"#fff"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+            <div>
+              <h1 style={{fontSize:24,fontWeight:700,margin:0}}>GlobalCore M3 - Mirror/Wet Coater Readiness Dashboard</h1>
+              <p style={{opacity:.8,fontSize:13,marginTop:4}}>Real QC Data · Robert Skowron, Global Quality SME · {received}/4 Plants Confirmed · {TESTS.length} Tests · GGL Excluded · Updated: 2026-04-01</p>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              {[["overview","Overview"],["heatmap","QC Heatmap"],["details","Frequency Detail"],["gaps","Gap Analysis"],["paths","M3 Paths"],["qi","M3 QI Config"],["rmqi","RM QI Config"],["materials","Raw Materials"]].map(([v,l])=>(
+                <button key={v} onClick={()=>{setView(v);setShowImportPanel(false);setShowVersionInfo(false);}} style={btn(l,v,view,true)}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        
+        {/* VERSION & DATA FRESHNESS BANNER — hidden on Raw Materials tab (has own upload) */}
+        {view !== "materials" && (
+        <div style={{background:"#fff",borderRadius:12,padding:"12px 20px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)",
+          display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,border:"1px solid #E2E8F0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,fontWeight:700,color:NAVY,padding:"4px 12px",borderRadius:8,background:"#EFF6FF"}}>v{DASHBOARD_VERSION}</span>
+            <span style={{fontSize:12,color:"#555"}}>Data built: <strong>{DATA_BUILT}</strong></span>
+            <span style={{fontSize:11,color:"#888"}}>|</span>
+            <span style={{fontSize:12,color:received===4?GREEN:YELLOW,fontWeight:600}}>{received}/4 plants hardcoded</span>
+            {qcImportLog.length > 0 && <span style={{fontSize:11,padding:"3px 10px",borderRadius:8,background:"#FEF3C7",color:"#92400E",fontWeight:600}}>+{qcImportLog.length} runtime import(s)</span>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowImportPanel(!showImportPanel)} style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+BLUE,background:showImportPanel?BLUE:"#fff",color:showImportPanel?"#fff":BLUE,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {"\uD83D\uDCC2"} Import Data
+            </button>
+            <button onClick={()=>setShowVersionInfo(!showVersionInfo)} style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+NAVY,background:showVersionInfo?NAVY:"#fff",color:showVersionInfo?"#fff":NAVY,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {"\u2139\uFE0F"} Version Info
+            </button>
+          </div>
+        </div>
+        )}
+
+        {/* VERSION INFO PANEL */}
+        {showVersionInfo && view !== "materials" && (
+          <div style={{background:"#fff",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)",border:"2px solid "+NAVY}}>
+            <div style={{fontWeight:700,fontSize:14,color:NAVY,marginBottom:12}}>Dashboard Version History</div>
+            {CHANGELOG.map((c,i) => (
+              <div key={i} style={{padding:"10px 0",borderBottom:i<CHANGELOG.length-1?"1px solid #F1F5F9":"none",display:"flex",gap:14,alignItems:"flex-start"}}>
+                <span style={{fontWeight:700,fontSize:12,color:"#fff",background:i===0?GREEN:"#94A3B8",padding:"3px 10px",borderRadius:8,whiteSpace:"nowrap"}}>v{c.ver}</span>
+                <div>
+                  <span style={{fontSize:12,fontWeight:600,color:"#555"}}>{c.date}</span>
+                  <p style={{fontSize:12,color:"#666",margin:"4px 0 0"}}>{c.note}</p>
+                </div>
+              </div>
+            ))}
+            <div style={{marginTop:14,padding:12,background:"#FFF8E1",borderRadius:8,fontSize:12,color:"#666",lineHeight:1.6}}>
+              <strong style={{color:"#92400E"}}>{"\u26A0\uFE0F"} Freshness notice:</strong> This HTML contains data frozen at build time ({DATA_BUILT}).
+              If you received this file and need newer data, ask the dashboard owner for the latest version or use the Import button above to load new Excel files at runtime.
+            </div>
+          </div>
+        )}
+
+        {/* DATA IMPORT PANEL */}
+        {showImportPanel && view !== "materials" && (
+          <div style={{background:"#fff",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)",border:"2px solid "+BLUE}}>
+            <div style={{fontWeight:700,fontSize:14,color:BLUE,marginBottom:4}}>Import QC Test Data from Excel</div>
+            <p style={{fontSize:12,color:"#666",marginBottom:16}}>
+              Drop a completed <strong>Mirror_QC_Plant_Request_Form</strong> file here. The parser reads Plant_Identification and QC_Test_Review tabs, detects the plant, and overlays the data on the dashboard in real-time. This does not modify the HTML file itself \u2014 it is a runtime overlay.
+            </p>
+            <div onDragOver={(e)=>{e.preventDefault();setQcDragOver(true);}} onDragLeave={()=>setQcDragOver(false)}
+              onDrop={(e)=>{e.preventDefault();setQcDragOver(false);const f=e.dataTransfer.files;if(f.length)handleQCFile(f[0]);}}
+              style={{border:"3px dashed "+(qcDragOver?BLUE:"#CBD5E1"),borderRadius:16,padding:"24px",textAlign:"center",
+                background:qcDragOver?"#EFF6FF":"#FAFBFC",transition:"all .2s",cursor:"pointer",marginBottom:16}}
+              onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".xlsx,.xls";inp.onchange=(e)=>{if(e.target.files[0])handleQCFile(e.target.files[0]);};inp.click();}}>
+              <div style={{fontSize:32,marginBottom:6}}>{qcDragOver?"\uD83D\uDCC2":"\uD83D\uDCC1"}</div>
+              <div style={{fontWeight:700,fontSize:14,color:NAVY}}>Drop QC Test Form (.xlsx) here or click to browse</div>
+              <div style={{fontSize:11,color:"#888",marginTop:4}}>Accepts: Mirror_QC_Plant_Request_Form_v2 files for GG, NK, ELM, TAT</div>
+            </div>
+            {qcImportLog.length > 0 && (
+              <div>
+                <div style={{fontWeight:700,fontSize:12,color:"#555",marginBottom:8}}>Runtime Imports:</div>
+                {qcImportLog.map((l,i) => (
+                  <div key={i} style={{display:"flex",gap:12,alignItems:"center",padding:"8px 12px",background:i%2===0?"#F8FAFC":"#fff",borderRadius:8,marginBottom:4}}>
+                    <span style={{fontSize:16}}>{"\u2705"}</span>
+                    <div style={{flex:1}}>
+                      <span style={{fontWeight:700,fontSize:12,color:NAVY}}>{l.plant} ({l.id})</span>
+                      <span style={{fontSize:11,color:"#888",marginLeft:8}}>{l.testsPerformed} tests performed</span>
+                    </div>
+                    <span style={{fontSize:11,color:"#999"}}>{l.file} \u00B7 {l.date}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:14,marginBottom:24}}>
+          {[
+            {label:"Plants in Scope",value:4,color:NAVY,sub:"excl. GGL Gujarat"},
+            {label:"Data Received",value:received,color:GREEN,sub:`${received}/4 plants confirmed`},
+            {label:"Overdue",value:overdue,color:RED,sub:"pending response"},
+            {label:"Total QC Tests",value:TESTS.length,color:BLUE,sub:"unique tests"},
+            {label:"Aligned (3+)",value:stats.aligned,color:GREEN,sub:`${stats.aligned}/${stats.total} tests`},
+            {label:"Divergent",value:stats.divergent,color:YELLOW,sub:"mixed coverage"},
+            {label:"Total Gaps",value:stats.totalGaps,color:RED,sub:"test not done at plant"},
+          ].map((c,i)=>(
+            <div key={i} style={{background:"#fff",borderRadius:12,padding:"18px 20px",borderLeft:`4px solid ${c.color}`,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{c.label}</div>
+              <div style={{fontSize:32,fontWeight:800,color:c.color,margin:"2px 0"}}>{c.value}</div>
+              <div style={{fontSize:11,color:"#999"}}>{c.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {view==="overview"&&(<>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
+            <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{background:NAVY,color:"#fff",padding:"12px 20px",fontWeight:700,fontSize:14}}>Plant Response Status</div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr style={{background:"#F1F5F9"}}>
+                  {["Plant","System","GPIS?","Status"].map(h=><th key={h} style={{padding:"10px 14px",textAlign:"left",fontWeight:600,color:"#555",borderBottom:"2px solid #E2E8F0"}}>{h}</th>)}
+                </tr></thead>
+                <tbody>{PLANTS.map(p=>(
+                  <tr key={p.id} style={{borderBottom:"1px solid #F1F5F9"}}>
+                    <td style={{padding:"10px 14px"}}><strong>{p.name}</strong><br/><span style={{fontSize:11,color:"#888"}}>{p.region}</span></td>
+                    <td style={{padding:"10px 14px",fontSize:12}}>{p.system}</td>
+                    <td style={{padding:"10px 14px"}}><span style={{color:p.gpisUsed==="Yes"?GREEN:p.gpisUsed==="No"?RED:"#999",fontWeight:600}}>{p.gpisUsed}</span></td>
+                    <td style={{padding:"10px 14px"}}><span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:16,fontSize:11,fontWeight:700,
+                      background:p.status==="received"?"#DEF7EC":p.status==="pending"?"#FFF8E1":"#FDECEA",color:statusColor(p.status)}}>
+                      {statusIcon(p.status)} {p.status}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{background:NAVY,color:"#fff",padding:"12px 20px",fontWeight:700,fontSize:14}}>Tests Performed per Plant</div>
+              <div style={{padding:20}}>
+                {[{name:"GulfGuard (KSA)",perf:stats.ggP,color:"#3B82F6"},{name:"Nongkhae (TH)",perf:stats.nkP,color:"#8B5CF6"},{name:"El Marqués (MX)",perf:stats.elmP,color:"#F59E0B"},{name:"Tatui (BR)",perf:stats.tatP,color:"#10B981"}]
+                  .map((p,i)=>(
+                  <div key={i} style={{marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:600,marginBottom:4}}>
+                      <span>{p.name}</span><span style={{color:p.color}}>{p.perf}/{stats.total}</span>
+                    </div>
+                    <div style={{height:10,background:"#E2E8F0",borderRadius:5,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${(p.perf/stats.total)*100}%`,background:p.color,borderRadius:5}}/>
+                    </div>
+                  </div>
+                ))}
+                <div style={{marginTop:20,padding:14,background:"#F8FAFC",borderRadius:8,fontSize:12,color:"#666"}}>
+                  <strong style={{color:NAVY}}>El Marqués recording systems:</strong><br/>
+                  {elmSystems.map(([sys,cnt])=><span key={sys} style={{display:"inline-block",margin:"3px 4px 0 0",padding:"2px 8px",borderRadius:10,background:"#E8F0FE",fontSize:11}}>{sys}: {cnt} tests</span>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>)}
+
+        {view==="heatmap"&&(
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{background:NAVY,color:"#fff",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+              <span style={{fontWeight:700,fontSize:14}}>QC Test Coverage Heatmap</span>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[["all","All"],["Destructive","Destruct."],["Visual","Visual"],["Dimensional","Dimens."],["Plant-specific","Plant-spec."]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setFilter(v)} style={btn(l,v,filter,true)}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr style={{background:"#F1F5F9"}}>
+                  <th style={{padding:"10px 14px",textAlign:"left",fontWeight:600,color:"#555",minWidth:180}}>QC Test</th>
+                  <th style={{padding:"10px 10px",textAlign:"center",fontWeight:600,color:"#555",width:60}}>Type</th>
+                  {["GG\n(KSA)","NK\n(TH)","ELM\n(MX)","Tatui\n(BR)"].map(p=><th key={p} style={{padding:"10px 14px",textAlign:"center",fontWeight:700,color:NAVY,width:80,whiteSpace:"pre-line",fontSize:12}}>{p}</th>)}
+                  <th style={{padding:"10px 14px",textAlign:"center",fontWeight:600,color:"#555",width:70}}>Score</th>
+                </tr></thead>
+                <tbody>{filteredTests.map((t,i)=>{
+                  const perf=[t.GG.s,t.NK.s,t.ELM.s,t.TAT.s].filter(s=>s===3).length;const ts=typeStyle(t.type);
+                  return(<tr key={i} style={{borderBottom:"1px solid #F1F5F9",background:i%2===0?"#fff":"#FAFBFC"}}>
+                    <td style={{padding:"8px 14px",fontWeight:500}} title={t.full+"\n"+t.purpose}>{t.name}</td>
+                    <td style={{padding:"8px 10px",textAlign:"center"}}><span style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:600,background:ts.bg,color:ts.c}}>{t.type.slice(0,5)}</span></td>
+                    {[{p:"GG",d:qcImports.GG?getTestData(TESTS.indexOf(t),"GG"):t.GG,n:"GulfGuard"},{p:"NK",d:qcImports.NK?getTestData(TESTS.indexOf(t),"NK"):t.NK,n:"Nongkhae"},{p:"ELM",d:qcImports.ELM?getTestData(TESTS.indexOf(t),"ELM"):t.ELM,n:"El Marqués"},{p:"TAT",d:qcImports.TAT?getTestData(TESTS.indexOf(t),"TAT"):t.TAT,n:"Tatui"}].map(({p,d,n})=>(
+                      <td key={p} style={{padding:"6px 14px",textAlign:"center"}}>
+                        <div className="tooltip" style={{display:"inline-block"}}>
+                          <div style={{width:36,height:36,borderRadius:8,background:scoreColor(d.s),display:"inline-flex",alignItems:"center",justifyContent:"center",
+                            color:d.s===0?"#94A3B8":"#fff",fontWeight:700,fontSize:13,boxShadow:d.s===3?"0 1px 3px rgba(39,174,96,.3)":d.s===1?"0 1px 3px rgba(231,76,60,.3)":"none"}}>
+                            {scoreLabel(d.s)}
+                          </div>
+                          <Tip plant={n} data={d}/>
+                        </div>
+                      </td>
+                    ))}
+                    <td style={{padding:"8px 14px",textAlign:"center",fontWeight:700,color:perf>=3?GREEN:perf>=2?YELLOW:perf>=1?"#D97706":RED}}>{perf}/4</td>
+                  </tr>);
+                })}</tbody>
+              </table>
+            </div>
+            <div style={{padding:"12px 20px",borderTop:"1px solid #E2E8F0",display:"flex",gap:20,fontSize:12,color:"#666",flexWrap:"wrap"}}>
+              {[[GREEN,"✓ Performed"],[RED,"✗ Gap"],["#CBD5E1","— N/A"]].map(([c,l],i)=>(
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:6}}><span style={{width:14,height:14,borderRadius:4,background:c,display:"inline-block"}}/> {l}</span>
+              ))}
+              <span style={{marginLeft:"auto",fontStyle:"italic",color:"#999"}}>Hover cells for details</span>
+            </div>
+          </div>
+        )}
+
+        {view==="details"&&(
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{background:BLUE,color:"#fff",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+              <span style={{fontWeight:700,fontSize:14}}>Frequency & Tool Comparison</span>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[["all","All"],["Destructive","Destruct."],["Visual","Visual"],["Dimensional","Dimens."],["Plant-specific","Plant-spec."]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setFilter(v)} style={btn(l,v,filter,true)}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr style={{background:"#F1F5F9"}}>
+                  <th style={{padding:"10px 12px",textAlign:"left",fontWeight:600,color:"#555",minWidth:160}}>QC Test</th>
+                  <th style={{padding:"10px 12px",textAlign:"center",fontWeight:700,color:"#3B82F6",minWidth:160}}>GulfGuard (KSA)</th>
+                  <th style={{padding:"10px 12px",textAlign:"center",fontWeight:700,color:"#8B5CF6",minWidth:160}}>Nongkhae (TH)</th>
+                  <th style={{padding:"10px 12px",textAlign:"center",fontWeight:700,color:"#F59E0B",minWidth:180}}>El Marqués (MX)</th>
+                  <th style={{padding:"10px 12px",textAlign:"center",fontWeight:700,color:"#94A3B8",minWidth:100}}>Tatui (BR)</th>
+                </tr></thead>
+                <tbody>{filteredTests.map((t,i)=>{
+                  const cs=(d)=>({padding:"8px 12px",borderBottom:"1px solid #F1F5F9",background:d.s===3?"#F0FDF4":d.s===1?"#FEF2F2":"#FAFBFC",textAlign:"center",verticalAlign:"top"});
+                  return(<tr key={i}>
+                    <td style={{padding:"8px 12px",fontWeight:600,borderBottom:"1px solid #F1F5F9",verticalAlign:"top"}}>
+                      {t.name}<br/><span style={{fontSize:10,color:"#999",fontWeight:400}}>{t.purpose}</span>
+                    </td>
+                    {[qcImports.GG?getTestData(TESTS.indexOf(t),"GG"):t.GG,qcImports.NK?getTestData(TESTS.indexOf(t),"NK"):t.NK,qcImports.ELM?getTestData(TESTS.indexOf(t),"ELM"):t.ELM,qcImports.TAT?getTestData(TESTS.indexOf(t),"TAT"):t.TAT].map((d,j)=>(
+                      <td key={j} style={cs(d)}>
+                        {d.s===3?<><strong style={{color:GREEN}}>{d.f}</strong><br/><span style={{color:"#888"}}>{d.t}</span>{d.w&&<><br/><span style={{fontSize:10,color:NAVY}}>→ {d.w}</span></>}</>
+                        :d.s===1?<span style={{color:RED,fontWeight:600}}>{d.f}</span>
+                        :<span style={{color:"#CBD5E1"}}>{"—"}</span>}
+                      </td>
+                    ))}
+                  </tr>);
+                })}</tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {view==="gaps"&&(<>
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)",marginBottom:24}}>
+            <div style={{background:RED,color:"#fff",padding:"12px 20px",fontWeight:700,fontSize:14}}>
+              Gaps to Close ({gapTests.length} tests with gaps)
+            </div>
+            <div style={{padding:20}}>
+              {gapTests.map((t,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",padding:"12px 0",borderBottom:i<gapTests.length-1?"1px solid #F1F5F9":"none",gap:14}}>
+                  <div style={{width:42,height:42,borderRadius:10,flexShrink:0,
+                    background:t.gapCount>=2?"#FEE2E2":"#FEF3C7",
+                    display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,
+                    color:t.gapCount>=2?RED:"#92400E"}}>{t.gapCount}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,color:"#333",fontSize:14}}>{t.name} <span style={{fontSize:11,color:"#999",fontWeight:400}}>( {t.purpose})</span></div>
+                    <div style={{fontSize:12,color:"#888",marginTop:2}}>
+                      {t.gapPlants.map((gp,j)=>(
+                        <span key={j} style={{marginRight:12}}><strong style={{color:RED}}>{gp.name}</strong>: <em>{gp.reason}</em></span>
+                      ))}
+                    </div>
+                  </div>
+                  <span style={{padding:"4px 12px",borderRadius:16,fontSize:11,fontWeight:700,whiteSpace:"nowrap",
+                    background:t.gapCount>=2?"#FEE2E2":"#FEF3C7",color:t.gapCount>=2?RED:"#92400E"}}>
+                    {t.gapCount>=2?"Critical":"Medium"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </>)}
+
+        {view==="paths"&&(
+          <div>
+            {/* AI INSIGHTS HEADER */}
+            <div style={{background:"linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)",borderRadius:16,padding:"24px 28px",marginBottom:20,color:"#fff",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,right:0,width:200,height:"100%",background:"rgba(255,255,255,0.05)",borderRadius:"0 16px 16px 0"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                <span style={{fontSize:28}}>{"\uD83E\uDDE0"}</span>
+                <h2 style={{fontSize:20,fontWeight:800,margin:0}}>M3 Integration Path — AI Insights</h2>
+              </div>
+              <p style={{opacity:.85,fontSize:13,margin:0,maxWidth:800}}>
+                Automated analysis of each plant's QC system to determine the optimal M3 integration strategy.
+                Path A = GPIS already captures data, M3 receives aggregated PASS/FAIL. Path B = Full M3 QI Request build needed.
+              </p>
+            </div>
+
+            {/* PLANT CARDS */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:24}}>
+              {PLANTS.map((p,i)=>{
+                const isGpis = p.gpisUsed==="Yes";
+                const isNo = p.gpisUsed==="No";
+                const isTBD = !isGpis && !isNo;
+                const pathLabel = isGpis ? "Path A" : isNo ? "Path B" : "TBD";
+                const pathFull = isGpis ? "GPIS \u2194 M3 Integration" : isNo ? "Full M3 QI Build Required" : "Awaiting Data";
+                const pathColor = isGpis ? GREEN : isNo ? YELLOW : RED;
+                const pathBg = isGpis ? "#D1FAE5" : isNo ? "#FEF3C7" : "#FEE2E2";
+                const icon = isGpis ? "\u2705" : isNo ? "\u26A0\uFE0F" : "\u2753";
+                const plantTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3).length;
+                const plantGaps = TESTS.filter(t => t[p.id] && t[p.id].s === 1).length;
+                const gpisTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3 && t[p.id].w && t[p.id].w.toUpperCase().includes("GPIS")).length;
+                const excelTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3 && t[p.id].w && (t[p.id].w.toLowerCase().includes("excel") || t[p.id].w.toLowerCase().includes("spreadsheet"))).length;
+                return (
+                  <div key={i} style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,.08)",border:"2px solid "+pathColor}}>
+                    <div style={{background:pathBg,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:15,color:"#333"}}>{p.name}</div>
+                        <div style={{fontSize:11,color:"#666",marginTop:2}}>{p.region} \u00B7 {p.system}</div>
+                      </div>
+                      <span style={{fontSize:28}}>{icon}</span>
+                    </div>
+                    <div style={{padding:"16px 20px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                        <span style={{fontSize:13,fontWeight:800,color:pathColor,padding:"6px 16px",borderRadius:10,background:pathBg,border:"2px solid "+pathColor}}>{pathLabel}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:"#555"}}>{pathFull}</span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                        <div style={{padding:"8px 12px",background:"#F0FDF4",borderRadius:8,textAlign:"center"}}>
+                          <div style={{fontSize:20,fontWeight:800,color:GREEN}}>{plantTests}</div>
+                          <div style={{fontSize:10,color:"#888"}}>Tests Done</div>
+                        </div>
+                        <div style={{padding:"8px 12px",background:"#FEF2F2",borderRadius:8,textAlign:"center"}}>
+                          <div style={{fontSize:20,fontWeight:800,color:RED}}>{plantGaps}</div>
+                          <div style={{fontSize:10,color:"#888"}}>Gaps</div>
+                        </div>
+                      </div>
+                      {plantTests > 0 && (
+                        <div style={{fontSize:12,color:"#555",lineHeight:1.7,padding:"12px 14px",background:"#F8FAFC",borderRadius:8,borderLeft:"3px solid #7C3AED"}}>
+                          <strong style={{color:"#7C3AED"}}>{"\uD83E\uDDE0"} AI Insight:</strong><br/>
+                          {isGpis && <>
+                            {gpisTests}/{plantTests} tests recorded in GPIS.
+                            {excelTests > 0 && <> {excelTests} test(s) still in Excel \u2014 need migration plan.</>}
+                            {gpisTests === plantTests && <> All tests in GPIS \u2014 <strong style={{color:GREEN}}>clean Path A candidate</strong>.</>}
+                            {gpisTests < plantTests && gpisTests > 0 && <> Majority in GPIS but some gaps \u2014 <strong style={{color:YELLOW}}>Path A with Excel migration needed</strong>.</>}
+                          </>}
+                          {isNo && <>
+                            No GPIS usage. {excelTests > 0 ? excelTests + " tests in Excel/local apps." : ""} <strong style={{color:YELLOW}}>Full Path B build required</strong> \u2014 all {plantTests} tests need M3 QI configuration from scratch.
+                          </>}
+                          {isTBD && <>
+                            Awaiting plant response. Cannot determine integration path yet.
+                          </>}
+                        </div>
+                      )}
+                      {plantTests === 0 && p.status !== "received" && (
+                        <div style={{fontSize:12,color:"#999",fontStyle:"italic",padding:"12px",background:"#F8FAFC",borderRadius:8}}>
+                          No data received yet. Path determination pending.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* SUMMARY TABLE */}
+            <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{background:"#4F46E5",color:"#fff",padding:"14px 20px",fontWeight:700,fontSize:14}}>
+                Integration Path Decision Matrix
+              </div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead><tr style={{background:"#F1F5F9"}}>
+                    {["Plant","System","GPIS Used?","Tests in GPIS","Tests in Excel","Total Tests","Gaps","Recommended Path","Action Required"].map(h=>
+                      <th key={h} style={{padding:"12px 14px",textAlign:"left",fontWeight:700,color:"#555",borderBottom:"2px solid #E2E8F0",fontSize:12,whiteSpace:"nowrap"}}>{h}</th>
+                    )}
+                  </tr></thead>
+                  <tbody>
+                    {PLANTS.map((p,i)=>{
+                      const plantTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3).length;
+                      const plantGaps = TESTS.filter(t => t[p.id] && t[p.id].s === 1).length;
+                      const gpisTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3 && t[p.id].w && t[p.id].w.toUpperCase().includes("GPIS")).length;
+                      const excelTests = TESTS.filter(t => t[p.id] && t[p.id].s === 3 && t[p.id].w && (t[p.id].w.toLowerCase().includes("excel") || t[p.id].w.toLowerCase().includes("spreadsheet"))).length;
+                      const isGpis = p.gpisUsed==="Yes";
+                      const isNo = p.gpisUsed==="No";
+                      const path = isGpis ? "Path A" : isNo ? "Path B" : "TBD";
+                      const pathColor = isGpis ? GREEN : isNo ? YELLOW : RED;
+                      const action = isGpis ? (excelTests > 0 ? "Migrate "+excelTests+" Excel tests to GPIS" : "Ready for M3 config") : isNo ? "Build full QI Request in M3" : "Collect plant data first";
+                      return (
+                        <tr key={i} style={{borderBottom:"1px solid #F1F5F9"}}>
+                          <td style={{padding:"10px 14px",fontWeight:700}}>{p.name}</td>
+                          <td style={{padding:"10px 14px",fontSize:12}}>{p.system}</td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontWeight:700,color:isGpis?GREEN:isNo?RED:"#999"}}>{p.gpisUsed}</span></td>
+                          <td style={{padding:"10px 14px",textAlign:"center",fontWeight:700,color:GREEN}}>{gpisTests}</td>
+                          <td style={{padding:"10px 14px",textAlign:"center",fontWeight:700,color:excelTests>0?YELLOW:"#999"}}>{excelTests}</td>
+                          <td style={{padding:"10px 14px",textAlign:"center",fontWeight:700}}>{plantTests}</td>
+                          <td style={{padding:"10px 14px",textAlign:"center",fontWeight:700,color:plantGaps>0?RED:"#999"}}>{plantGaps}</td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontWeight:800,fontSize:13,color:pathColor,padding:"4px 14px",borderRadius:8,background:pathColor+"18"}}>{path}</span></td>
+                          <td style={{padding:"10px 14px",fontSize:12,color:"#555"}}>{action}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+                {view==="qi"&&(
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{background:BLUE,color:"#fff",padding:"20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+              <div>
+                <span style={{fontWeight:700,fontSize:14}}>M3 QI Configuration</span>
+                <p style={{opacity:.8,fontSize:12,marginTop:4}}>Path A (GPIS→M3 PASS/FAIL) | Path B (Full M3 QI with Parameters)</p>
+              </div>
+            </div>
+            <div style={{padding:20}}>
+              {/* Plant & Path Selector */}
+              <div style={{marginBottom:24,padding:16,background:"#F8FAFC",borderRadius:10}}>
+                <div style={{display:"flex",gap:24,flexWrap:"wrap",alignItems:"flex-end"}}>
+                  <div style={{flex:"1 1 260px"}}>
+                    <label style={{display:"block",fontWeight:700,fontSize:13,marginBottom:8,color:"#333"}}>Select Plant:</label>
+                    <select value={selectedPlant} onChange={(e) => setSelectedPlant(e.target.value)} style={{width:"100%",maxWidth:300,padding:"8px 12px",borderRadius:6,border:"1px solid #D1D5DB",fontSize:13}}>
+                      {PLANTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                    </select>
+                  </div>
+                  <div style={{flex:"0 0 auto"}}>
+                    <label style={{display:"block",fontWeight:700,fontSize:13,marginBottom:8,color:"#333"}}>Integration Path:</label>
+                    <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"2px solid "+BLUE}}>
+                      <button onClick={() => setPathOverrides(prev => { var n = {}; for (var k in prev) { n[k] = prev[k]; } n[selectedPlant] = "A"; return n; })}
+                        style={{padding:"8px 18px",fontWeight:700,fontSize:12,border:"none",cursor:"pointer",
+                        background:isPathA?BLUE:"#fff",color:isPathA?"#fff":BLUE,transition:"all 0.2s"}}>
+                        Path A (GPIS)
+                      </button>
+                      <button onClick={() => setPathOverrides(prev => { var n = {}; for (var k in prev) { n[k] = prev[k]; } n[selectedPlant] = "B"; return n; })}
+                        style={{padding:"8px 18px",fontWeight:700,fontSize:12,border:"none",cursor:"pointer",borderLeft:"1px solid "+BLUE,
+                        background:!isPathA?BLUE:"#fff",color:!isPathA?"#fff":BLUE,transition:"all 0.2s"}}>
+                        Path B (Full QI)
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{flex:"0 0 auto",fontSize:11,color:"#888",paddingBottom:4}}>
+                    Default: {currentPlant.gpisUsed === "Yes" ? "Path A" : currentPlant.gpisUsed === "No" ? "Path B" : "Path A"} (GPIS: {currentPlant.gpisUsed})
+                  </div>
+                </div>
+              </div>
+
+              {/* Path Info Banner */}
+              <div style={{marginBottom:24,padding:16,background:isPathA?"#E0F2FE":"#FEF3C7",borderRadius:10,borderLeft:"4px solid "+(isPathA?BLUE:YELLOW)}}>
+                <div style={{fontWeight:700,fontSize:13,color:isPathA?BLUE:YELLOW,marginBottom:4}}>
+                  Integration Path: {isPathA ? "Path A — GPIS to M3 (WCO001 → PASS/FAIL)" : "Path B — Full M3 QI Request (WCO Tests with Parameters)"}
+                </div>
+                <p style={{fontSize:12,color:"#666",margin:0}}>
+                  {isPathA
+                    ? "GPIS sends one WCO001 test result to M3. The outcome is binary: PASS or FAIL. One QI Request frequency defines how often this check is triggered during production."
+                    : "Full M3 QI Request containing all WCO tests (WCO001-WCO019) as internal test characteristics. One QI Request frequency defines how often the entire set of tests is triggered during production."}
+                </p>
+              </div>
+
+              {/* QI Request Frequency — applies to both paths */}
+              <div style={{marginBottom:24,padding:16,background:"#fff",borderRadius:10,border:"2px solid "+NAVY}}>
+                <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                  <div style={{flex:"0 0 auto"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:NAVY,marginBottom:4}}>QI Request Frequency (Production Trigger)</div>
+                    <div style={{fontSize:11,color:"#888"}}>How often is this QI Request triggered during production at {currentPlant.name}?</div>
+                  </div>
+                  <div style={{flex:"1 1 200px",display:"flex",gap:12,alignItems:"center"}}>
+                    <input type="text" placeholder="e.g. Every shift, Every 2 hours, Per batch..."
+                      value={isPathA ? (qiFreqA[selectedPlant]||"") : (qiFreqB[selectedPlant]||"")}
+                      onChange={(e) => {
+                        if (isPathA) setQiFreqA(prev => { var n = {}; for (var k in prev) n[k]=prev[k]; n[selectedPlant]=e.target.value; return n; });
+                        else setQiFreqB(prev => { var n = {}; for (var k in prev) n[k]=prev[k]; n[selectedPlant]=e.target.value; return n; });
+                      }}
+                      style={{flex:1,padding:"10px 14px",borderRadius:8,border:"2px solid #E2E8F0",fontSize:13,fontWeight:600}}/>
+                    <span style={{fontSize:11,color:"#999",whiteSpace:"nowrap"}}>TBD - to be confirmed with plant</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PATH A — WCO001 GPIS Pass/Fail */}
+              {isPathA && (
+                <div style={{marginBottom:24}}>
+                  <div style={{background:"#fff",border:"2px solid "+BLUE,borderRadius:12,overflow:"hidden"}}>
+                    <div style={{background:BLUE,color:"#fff",padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontWeight:700,fontSize:14}}>WCO001 — Wet Coater Glass GPIS Pass/Fail</span>
+                      <span style={{fontSize:11,opacity:.8}}>Single aggregated result from GPIS quality inspection</span>
+                    </div>
+                    <div style={{padding:24}}>
+                      <div style={{display:"flex",gap:32,flexWrap:"wrap",alignItems:"center"}}>
+                        <div style={{flex:"1 1 300px"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                            <tbody>
+                              <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555",width:160}}>Test Code</td>
+                                <td style={{padding:"12px 16px",fontWeight:700,fontSize:15}}>WCO001</td>
+                              </tr>
+                              <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555"}}>Description</td>
+                                <td style={{padding:"12px 16px"}}>Wet Coater Glass GPIS Pass/Fail</td>
+                              </tr>
+                              <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555"}}>Type</td>
+                                <td style={{padding:"12px 16px"}}><span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:"#E0F2FE",color:BLUE}}>2-Qualitative</span></td>
+                              </tr>
+                              <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555"}}>Target / Min / Max</td>
+                                <td style={{padding:"12px 16px",color:"#999"}}>0 / 0 / 0 (not used for qualitative)</td>
+                              </tr>
+                              <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555"}}>Possible Results</td>
+                                <td style={{padding:"12px 16px"}}>
+                                  <span style={{display:"inline-block",padding:"4px 14px",borderRadius:6,fontWeight:700,fontSize:12,background:"#D1FAE5",color:"#065F46",marginRight:8}}>PASS</span>
+                                  <span style={{display:"inline-block",padding:"4px 14px",borderRadius:6,fontWeight:700,fontSize:12,background:"#FEE2E2",color:"#991B1B"}}>FAIL</span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{padding:"12px 16px",fontWeight:700,color:"#555"}}>Current Result</td>
+                                <td style={{padding:"12px 16px"}}>
+                                  <select value={generalTestResult[selectedPlant] || "PASS"}
+                                    onChange={function(e) { setGeneralTestResult(function(prev) { var n = {}; for (var k in prev) { n[k] = prev[k]; } n[selectedPlant] = e.target.value; return n; }); }}
+                                    style={{padding:"8px 16px",borderRadius:6,border:"2px solid "+(((generalTestResult[selectedPlant] || "PASS") === "PASS") ? GREEN : "#DC2626"),
+                                    fontWeight:700,fontSize:13,color:(generalTestResult[selectedPlant] || "PASS") === "PASS" ? GREEN : "#DC2626",background:"#fff",cursor:"pointer"}}>
+                                    <option value="PASS">PASS</option>
+                                    <option value="FAIL">FAIL</option>
+                                  </select>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{flex:"0 0 auto",textAlign:"center",padding:20}}>
+                          <div style={{width:120,height:120,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:900,
+                            background:((generalTestResult[selectedPlant] || "PASS") === "PASS") ? "#D1FAE5" : "#FEE2E2",
+                            color:((generalTestResult[selectedPlant] || "PASS") === "PASS") ? "#065F46" : "#991B1B",
+                            border:"4px solid "+(((generalTestResult[selectedPlant] || "PASS") === "PASS") ? GREEN : "#DC2626")}}>
+                            {(generalTestResult[selectedPlant] || "PASS") === "PASS" ? "✓" : "✗"}
+                          </div>
+                          <div style={{marginTop:8,fontWeight:700,fontSize:14,color:((generalTestResult[selectedPlant] || "PASS") === "PASS") ? GREEN : "#DC2626"}}>
+                            {generalTestResult[selectedPlant] || "PASS"}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{marginTop:16,padding:12,background:"#F0F9FF",borderRadius:8,fontSize:12,color:"#555",lineHeight:1.5}}>
+                        <strong>How it works:</strong> GPIS performs all individual quality checks internally. The result sent to M3 is a single WCO001 test (2-Qualitative) with a binary PASS/FAIL outcome. Target, Min, Max values are 0.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PATH B — Full WCO Test Table */}
+              {!isPathA && (()=>{
+                const pcfg = qiConfigs[selectedPlant];
+                const pcfgTests = (pcfg && pcfg.tests) ? pcfg.tests : {};
+                // Build the visible list: WCO_CATALOG (minus removed) + custom tests added to this plant
+                const catalogRows = WCO_CATALOG
+                  .filter(w => !(pcfgTests[w.code] && pcfgTests[w.code].removed))
+                  .map(w => ({ ...w, custom:false }));
+                const customRows = Object.values(pcfgTests).filter(t =>
+                  t && t.custom && !t.removed && !WCO_CATALOG.find(w => w.code === t.code)
+                );
+                const rows = [...catalogRows, ...customRows];
+                return (
+              <div style={{marginBottom:24,overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:"#F1F5F9"}}>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,width:50}}>Enabled</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:110}}>WCO Code</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:200}}>Description</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:130}}>Type</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:90}}>Max</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:90}}>Min</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:90}}>Target</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:70}}>Decimals</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:70}}>UoM</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,minWidth:100}}>Result</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:50}}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((wco,i) => {
+                      const testConfig = pcfgTests[wco.code] || null;
+                      const isEnabled = testConfig ? (testConfig.enabled !== false) : true;
+                      const gv = (field) => {
+                        const t = testConfig;
+                        if (t && t[field] !== undefined && t[field] !== null && t[field] !== "") return t[field];
+                        return wco[field] !== undefined ? wco[field] : null;
+                      };
+                      const currentType = (testConfig && testConfig.tty) || wco.tty;
+                      const isQual = currentType === "Qualitative";
+                      const numDisabled = !isEnabled || isQual;
+                      const currentDesc = (testConfig && testConfig.desc) || wco.desc;
+                      return (
+                        <tr key={wco.code} style={{borderBottom:"1px solid #F1F5F9",background:wco.custom?"#FFFBEB":(i%2===0?"#fff":"#FAFBFC"),opacity:isEnabled?1:0.5}}>
+                          <td style={{padding:"10px"}}><input type="checkbox" checked={isEnabled} onChange={() => toggleTest(selectedPlant, wco.code)} style={{cursor:"pointer"}}/></td>
+                          <td style={{padding:"10px",fontWeight:700}}>
+                            {wco.code}
+                            {wco.custom && <span style={{marginLeft:4,fontSize:9,padding:"1px 6px",borderRadius:8,background:YELLOW,color:"#fff",fontWeight:700}}>CUSTOM</span>}
+                          </td>
+                          <td style={{padding:"6px 8px"}}>
+                            <input type="text" value={currentDesc||""} onChange={(e)=>updateTestValue(selectedPlant,wco.code,"desc",e.target.value)} disabled={!isEnabled}
+                              style={{width:"100%",minWidth:180,padding:"6px 8px",border:"1px solid #E2E8F0",borderRadius:4,fontSize:13,background:isEnabled?"#fff":"#F8FAFC"}} title="Edit description"/>
+                          </td>
+                          <td style={{padding:"6px 8px",textAlign:"center"}}>
+                            <select value={currentType} onChange={(e)=>updateTestValue(selectedPlant,wco.code,"tty",e.target.value)} disabled={!isEnabled}
+                              style={{padding:"4px 6px",borderRadius:6,fontSize:10,fontWeight:700,cursor:isEnabled?"pointer":"not-allowed",
+                              background:wcoTypeColor[currentType]||"#F1F5F9",color:wcoTypeColorDark[currentType]||"#555",border:"1px solid "+(wcoTypeColorDark[currentType]||"#CBD5E1")}}>
+                              <option value="Qualitative">Qualitative</option>
+                              <option value="Quantitative">Quantitative</option>
+                              <option value="Numeric">Numeric</option>
+                            </select>
+                          </td>
+                          <td style={{padding:"6px 8px"}}><input type="number" step="0.01" value={numDisabled?"":(gv("expMax")||"")} onChange={(e) => updateTestValue(selectedPlant,wco.code,"expMax",e.target.value)} disabled={numDisabled} placeholder={isQual?"N/A":""} style={{width:"100%",minWidth:70,padding:"6px 8px",border:"1px solid #D1D5DB",borderRadius:4,fontSize:13,textAlign:"right",background:numDisabled?"#F1F5F9":"#fff",color:numDisabled?"#94A3B8":"#111"}}/></td>
+                          <td style={{padding:"6px 8px"}}><input type="number" step="0.01" value={numDisabled?"":(gv("expMin")||"")} onChange={(e) => updateTestValue(selectedPlant,wco.code,"expMin",e.target.value)} disabled={numDisabled} placeholder={isQual?"N/A":""} style={{width:"100%",minWidth:70,padding:"6px 8px",border:"1px solid #D1D5DB",borderRadius:4,fontSize:13,textAlign:"right",background:numDisabled?"#F1F5F9":"#fff",color:numDisabled?"#94A3B8":"#111"}}/></td>
+                          <td style={{padding:"6px 8px"}}><input type="number" step="0.01" value={numDisabled?"":(gv("target")||"")} onChange={(e) => updateTestValue(selectedPlant,wco.code,"target",e.target.value)} disabled={numDisabled} placeholder={isQual?"N/A":""} style={{width:"100%",minWidth:70,padding:"6px 8px",border:"1px solid #D1D5DB",borderRadius:4,fontSize:13,textAlign:"right",background:numDisabled?"#F1F5F9":"#fff",color:numDisabled?"#94A3B8":"#111"}}/></td>
+                          <td style={{padding:"6px 8px"}}><input type="number" min="0" max="5" value={numDisabled?"":(gv("dec")||0)} onChange={(e) => updateTestValue(selectedPlant,wco.code,"dec",e.target.value)} disabled={numDisabled} style={{width:"100%",minWidth:50,padding:"6px 8px",border:"1px solid #D1D5DB",borderRadius:4,fontSize:13,textAlign:"center",background:numDisabled?"#F1F5F9":"#fff",color:numDisabled?"#94A3B8":"#111"}}/></td>
+                          <td style={{padding:"6px 8px"}}><input type="text" value={numDisabled?"":(gv("uom")||"")} onChange={(e) => updateTestValue(selectedPlant,wco.code,"uom",e.target.value)} disabled={numDisabled} placeholder={isQual?"—":""} style={{width:"100%",minWidth:50,padding:"6px 8px",border:"1px solid #D1D5DB",borderRadius:4,fontSize:13,textAlign:"center",background:numDisabled?"#F1F5F9":"#fff",color:numDisabled?"#94A3B8":"#111"}}/></td>
+                          <td style={{padding:"6px 8px",textAlign:"center"}}>
+                            {isQual ? (
+                              <select value={gv("tst")||"PASS"} onChange={(e) => updateTestValue(selectedPlant,wco.code,"tst",e.target.value)} disabled={!isEnabled}
+                                style={{padding:"6px 10px",borderRadius:6,fontWeight:700,fontSize:12,cursor:"pointer",
+                                border:"2px solid "+((gv("tst")||"PASS")==="PASS"?GREEN:"#DC2626"),
+                                color:(gv("tst")||"PASS")==="PASS"?GREEN:"#DC2626",background:"#fff"}}>
+                                <option value="PASS">PASS</option>
+                                <option value="FAIL">FAIL</option>
+                              </select>
+                            ) : (
+                              <span style={{fontSize:11,color:"#999"}}>—</span>
+                            )}
+                          </td>
+                          <td style={{padding:"6px 8px",textAlign:"center"}}>
+                            <button onClick={()=>removeTestFromPlant(selectedPlant, wco.code)} title="Remove this test from plant's config"
+                              style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontWeight:700,fontSize:12}}>✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {rows.length === 0 && (
+                      <tr><td colSpan={11} style={{padding:"24px",textAlign:"center",color:"#999",fontSize:12}}>
+                        No tests configured. All tests have been removed — click "Reset Plant" below to restore defaults.
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+                );})()}
+
+              {/* Add Custom Test — only for Path B */}
+              {!isPathA && (
+              <div style={{marginBottom:20}}>
+                <button onClick={() => setShowAddCustom(!showAddCustom)} style={{padding:"10px 16px",background:BLUE,color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer"}}>
+                  {showAddCustom ? "Cancel" : "+ Add Custom Test"}
+                </button>
+              </div>
+              )}
+
+              {/* Add Custom Test Form — only for Path B */}
+              {!isPathA && showAddCustom && (
+                <div style={{marginBottom:24,padding:16,background:"#FFF8E1",borderRadius:10,borderLeft:"4px solid "+YELLOW}}>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:4,color:YELLOW}}>Add Custom Test</div>
+                  <div style={{fontSize:11,color:"#92400E",marginBottom:12,fontStyle:"italic"}}>All fields are optional. Leave WCO Code empty for auto-generated code (CUSTOM_NNN). You can edit any row after adding.</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+                    <div>
+                      <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>WCO Code <span style={{fontWeight:400,color:"#999"}}>(optional)</span></label>
+                      <input type="text" placeholder="auto: CUSTOM_001" value={newCustom.code} onChange={(e) => setNewCustom({...newCustom,code:e.target.value})} style={{width:"100%"}}/>
+                    </div>
+                    <div style={{gridColumn:"span 2"}}>
+                      <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Description <span style={{fontWeight:400,color:"#999"}}>(optional)</span></label>
+                      <input type="text" placeholder="e.g. Silver Purity Titration" value={newCustom.desc} onChange={(e) => setNewCustom({...newCustom,desc:e.target.value})} style={{width:"100%"}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Type</label>
+                      <select value={newCustom.tty} onChange={(e) => setNewCustom({...newCustom,tty:e.target.value})} style={{width:"100%"}}>
+                        <option>Qualitative</option>
+                        <option>Quantitative</option>
+                        <option>Numeric</option>
+                      </select>
+                    </div>
+                    {newCustom.tty === "Qualitative" ? (
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Expected Result</label>
+                        <select value={newCustom.tst||"PASS"} onChange={(e) => setNewCustom({...newCustom,tst:e.target.value})} style={{width:"100%",fontWeight:700,color:(newCustom.tst||"PASS")==="PASS"?GREEN:"#DC2626"}}>
+                          <option value="PASS">PASS</option>
+                          <option value="FAIL">FAIL</option>
+                        </select>
+                      </div>
+                    ) : (<>
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Max</label>
+                        <input type="number" step="0.01" placeholder="optional" value={newCustom.expMax} onChange={(e) => setNewCustom({...newCustom,expMax:e.target.value})} style={{width:"100%"}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Min</label>
+                        <input type="number" step="0.01" placeholder="optional" value={newCustom.expMin} onChange={(e) => setNewCustom({...newCustom,expMin:e.target.value})} style={{width:"100%"}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Target</label>
+                        <input type="number" step="0.01" placeholder="optional" value={newCustom.target} onChange={(e) => setNewCustom({...newCustom,target:e.target.value})} style={{width:"100%"}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>Decimals</label>
+                        <input type="number" min="0" max="5" placeholder="0" value={newCustom.dec} onChange={(e) => setNewCustom({...newCustom,dec:e.target.value})} style={{width:"100%"}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:10,fontWeight:700,color:"#92400E",marginBottom:3}}>UoM</label>
+                        <input type="text" placeholder="e.g. ML, %" value={newCustom.uom} onChange={(e) => setNewCustom({...newCustom,uom:e.target.value})} style={{width:"100%"}}/>
+                      </div>
+                    </>)}
+                  </div>
+                  <div style={{marginTop:12,display:"flex",gap:8}}>
+                    <button onClick={addCustomTest} style={{padding:"10px 16px",background:GREEN,color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer"}}>
+                      + Add Test
+                    </button>
+                    <button onClick={()=>{setShowAddCustom(false);setNewCustom({ code:"", desc:"", tty:"Qualitative", expMax:"", expMin:"", target:"", dec:0, tst:"", uom:"" });}} style={{padding:"10px 16px",background:"#E2E8F0",color:"#475569",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer"}}>
+                      Cancel
+                    </button>
+                    <button onClick={()=>resetPlantConfig(selectedPlant)} title="Restore all default WCO tests and clear overrides for this plant"
+                      style={{marginLeft:"auto",padding:"10px 14px",background:"#fff",color:"#475569",border:"1px solid #CBD5E1",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                      ↻ Reset Plant Config
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuration Summary */}
+              <div style={{padding:16,background:"#F8FAFC",borderRadius:10,borderLeft:"4px solid "+NAVY}}>
+                <div style={{fontWeight:700,fontSize:13,color:NAVY,marginBottom:8}}>Configuration Summary</div>
+                <div style={{fontSize:12,color:"#666",lineHeight:1.6}}>
+                  <strong>Plant:</strong> {currentPlant.name}<br/>
+                  <strong>Integration Path:</strong> {isPathA ? "Path A (GPIS → M3 WCO001)" : "Path B (Full QI with WCO Tests)"}<br/>
+                  <strong>QI Request Frequency:</strong> {isPathA ? (qiFreqA[selectedPlant] || "TBD") : (qiFreqB[selectedPlant] || "TBD")}<br/>
+                  {isPathA
+                    ? <span><strong>WCO001 Result:</strong> {generalTestResult[selectedPlant] || "PASS"}<br/></span>
+                    : <span><strong>Tests Enabled:</strong> {WCO_CATALOG.filter(function(wco) { var pc = qiConfigs[selectedPlant]; var t = (pc && pc.tests) ? pc.tests[wco.code] : null; return t ? t.enabled : true; }).length} / {WCO_CATALOG.length}<br/>
+                      <strong>Custom Tests:</strong> {Object.values((qiConfigs[selectedPlant] && qiConfigs[selectedPlant].tests) || {}).filter(function(t) { return !WCO_CATALOG.find(function(w) { return w.code === t.code; }); }).length}<br/></span>
+                  }
+                </div>
+                <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:11,color:"#666",fontWeight:600,marginRight:4}}>Export this plant's QI Config:</span>
+                  <button onClick={exportExcelPro} style={{padding:"8px 14px",background:GREEN,color:"#fff",border:"none",borderRadius:6,fontWeight:700,cursor:"pointer",fontSize:12}} title="Multi-sheet professional Excel (Summary + QI Config + QC Tests + Raw Materials + RM Tests + All Plants)">
+                    📊 Excel (.xlsx) Pro
+                  </button>
+                  <button onClick={exportJSON} style={{padding:"8px 14px",background:NAVY,color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                    JSON
+                  </button>
+                  <button onClick={exportCSV} style={{padding:"8px 14px",background:BLUE,color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                    CSV
+                  </button>
+                  <button onClick={exportTSV} style={{padding:"8px 14px",background:"#64748B",color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                    Legacy .xls
+                  </button>
+                </div>
+                {/* Share & Sync — Full State Export/Import */}
+                <div style={{marginTop:16,padding:12,background:"#EFF6FF",borderRadius:8,borderLeft:"4px solid "+BLUE}}>
+                  <div style={{fontWeight:700,fontSize:12,color:BLUE,marginBottom:4}}>🔄 Share & Sync (Full Dashboard State)</div>
+                  <div style={{fontSize:11,color:"#555",marginBottom:8}}>
+                    Export the complete dashboard state (all plants, all edits) to share with colleagues. They can Import the file to see your changes. Works offline — no GitHub account or tokens required.
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={exportFullState} style={{padding:"8px 14px",background:BLUE,color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                      ⬇ Export Full State (JSON)
+                    </button>
+                    <button onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=(e)=>{if(e.target.files[0])importFullState(e.target.files[0]);};inp.click();}}
+                      style={{padding:"8px 14px",background:"#fff",color:BLUE,border:"2px solid "+BLUE,borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                      ⬆ Import Full State (JSON)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view==="rmqi"&&(
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{background:"linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)",color:"#fff",padding:"20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+              <div>
+                <span style={{fontWeight:700,fontSize:16}}>Raw Materials — M3 QI Configuration</span>
+                <p style={{opacity:.8,fontSize:12,marginTop:4}}>Define QI test characteristics for raw material quality control. All tests are created from scratch here.</p>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#E0E7FF",padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,0.15)"}}>{rmTests.length} test(s) defined</span>
+              </div>
+            </div>
+            <div style={{padding:20}}>
+
+              {/* Plant Selector for RM too */}
+              <div style={{marginBottom:20,padding:14,background:"#F8FAFC",borderRadius:10}}>
+                <label style={{fontWeight:700,fontSize:13,color:"#333",marginRight:12}}>Plant context:</label>
+                <select value={selectedPlant} onChange={(e) => setSelectedPlant(e.target.value)} style={{padding:"8px 12px",borderRadius:6,border:"1px solid #D1D5DB",fontSize:13}}>
+                  {PLANTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                </select>
+              </div>
+
+              {/* RM Tests Table */}
+              {rmTests.length > 0 && (
+              <div style={{marginBottom:24,overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:"#F5F3FF"}}>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,width:40}}>#</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:100}}>Code</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:160}}>Description</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:120}}>Material</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:90}}>Type</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:80}}>Result</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:80}}>Max</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:80}}>Min</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:80}}>Target</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:60}}>Dec</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:70}}>UoM</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:60}}>Freq</th>
+                      <th style={{padding:"10px",textAlign:"left",fontWeight:600,minWidth:120}}>Note</th>
+                      <th style={{padding:"10px",textAlign:"center",fontWeight:600,width:50}}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rmTests.map((rt,idx) => (
+                      <tr key={idx} style={{borderBottom:"1px solid #F1F5F9",background:idx%2===0?"#fff":"#FAFBFC"}}>
+                        <td style={{padding:"8px 10px",color:"#999",fontWeight:600}}>{idx+1}</td>
+                        <td style={{padding:"8px 10px",fontWeight:700}}>{rt.code}</td>
+                        <td style={{padding:"8px 10px"}}>{rt.desc}</td>
+                        <td style={{padding:"8px 10px",fontSize:11,color:"#555"}}>{rt.material}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}><span style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:600,background:wcoTypeColor[rt.tty]||"#F1F5F9",color:wcoTypeColorDark[rt.tty]||"#555"}}>{(rt.tty||"").slice(0,4)}</span></td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>
+                          {rt.tty === "Qualitative" ? (
+                            <span style={{fontWeight:700,fontSize:11,color:rt.tst==="PASS"?GREEN:"#DC2626"}}>{rt.tst||"PASS"}</span>
+                          ) : <span style={{color:"#999"}}>—</span>}
+                        </td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.tty!=="Qualitative"?rt.expMax:"—"}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.tty!=="Qualitative"?rt.expMin:"—"}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.tty!=="Qualitative"?rt.target:"—"}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.dec}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.uom||"—"}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>{rt.freq}</td>
+                        <td style={{padding:"8px 10px",fontSize:11,color:"#666"}}>{rt.note}</td>
+                        <td style={{padding:"8px 10px",textAlign:"center"}}>
+                          <button onClick={()=>setRmTests(prev=>prev.filter((_,j)=>j!==idx))} style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontWeight:700,fontSize:12}}>\u2715</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              )}
+
+              {rmTests.length === 0 && !showAddRmTest && (
+                <div style={{textAlign:"center",padding:"40px 20px",color:"#999"}}>
+                  <div style={{fontSize:40,marginBottom:10}}>{"\uD83E\uDDEA"}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:"#666",marginBottom:4}}>No Raw Material QI tests defined yet</div>
+                  <div style={{fontSize:12}}>Click the button below to start building your RM test catalog from scratch.</div>
+                </div>
+              )}
+
+              {/* Add Test Button */}
+              <div style={{marginBottom:16}}>
+                <button onClick={() => setShowAddRmTest(!showAddRmTest)} style={{padding:"10px 20px",background:"#7C3AED",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13}}>
+                  {showAddRmTest ? "Cancel" : "+ Add Custom RM Test"}
+                </button>
+              </div>
+
+              {/* Add Test Form */}
+              {showAddRmTest && (
+                <div style={{marginBottom:24,padding:20,background:"#F5F3FF",borderRadius:12,borderLeft:"4px solid #7C3AED"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#7C3AED",marginBottom:14}}>Define New Raw Material Test</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Test Code *</label>
+                      <input type="text" placeholder="e.g. RM001" value={newRmTest.code} onChange={(e) => setNewRmTest({...newRmTest,code:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div style={{gridColumn:"span 2"}}>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Description *</label>
+                      <input type="text" placeholder="e.g. Silver Nitrate Purity" value={newRmTest.desc} onChange={(e) => setNewRmTest({...newRmTest,desc:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Material Category</label>
+                      <input type="text" placeholder="e.g. Silver chemicals" value={newRmTest.material} onChange={(e) => setNewRmTest({...newRmTest,material:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Type</label>
+                      <select value={newRmTest.tty} onChange={(e) => setNewRmTest({...newRmTest,tty:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}>
+                        <option>Qualitative</option>
+                        <option>Quantitative</option>
+                        <option>Numeric</option>
+                      </select>
+                    </div>
+                    {newRmTest.tty === "Qualitative" ? (
+                      <div>
+                        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Expected Result</label>
+                        <select value={newRmTest.tst||"PASS"} onChange={(e) => setNewRmTest({...newRmTest,tst:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13,fontWeight:700,color:(newRmTest.tst||"PASS")==="PASS"?GREEN:"#DC2626"}}>
+                          <option value="PASS">PASS</option>
+                          <option value="FAIL">FAIL</option>
+                        </select>
+                      </div>
+                    ) : (<>
+                      <div>
+                        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Expected Max</label>
+                        <input type="number" step="0.01" placeholder="Max" value={newRmTest.expMax} onChange={(e) => setNewRmTest({...newRmTest,expMax:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Expected Min</label>
+                        <input type="number" step="0.01" placeholder="Min" value={newRmTest.expMin} onChange={(e) => setNewRmTest({...newRmTest,expMin:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Target</label>
+                        <input type="number" step="0.01" placeholder="Target" value={newRmTest.target} onChange={(e) => setNewRmTest({...newRmTest,target:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                      </div>
+                    </>)}
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Decimals</label>
+                      <input type="number" min="0" max="5" value={newRmTest.dec} onChange={(e) => setNewRmTest({...newRmTest,dec:parseInt(e.target.value)||0})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>UoM</label>
+                      <input type="text" placeholder="e.g. ML, EA, %" value={newRmTest.uom} onChange={(e) => setNewRmTest({...newRmTest,uom:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Samples/Lot (Freq)</label>
+                      <input type="number" min="1" value={newRmTest.freq} onChange={(e) => setNewRmTest({...newRmTest,freq:parseInt(e.target.value)||1})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                    <div style={{gridColumn:"span 2"}}>
+                      <label style={{display:"block",fontSize:11,fontWeight:600,color:"#555",marginBottom:4}}>Note / Rationale</label>
+                      <input type="text" placeholder="Why this test is needed..." value={newRmTest.note} onChange={(e) => setNewRmTest({...newRmTest,note:e.target.value})} style={{width:"100%",padding:"8px 12px",border:"1px solid #D1D5DB",borderRadius:6,fontSize:13}}/>
+                    </div>
+                  </div>
+                  <button onClick={()=>{
+                    if(!newRmTest.code||!newRmTest.desc) return;
+                    setRmTests(prev=>[...prev,{...newRmTest,expMax:parseFloat(newRmTest.expMax)||0,expMin:parseFloat(newRmTest.expMin)||0,target:parseFloat(newRmTest.target)||0}]);
+                    setNewRmTest({code:"",desc:"",tty:"Qualitative",expMax:"",expMin:"",target:"",dec:0,tst:"PASS",uom:"",freq:1,material:"",note:""});
+                  }} style={{marginTop:14,padding:"10px 20px",background:"#7C3AED",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13}}>
+                    Add Test
+                  </button>
+                </div>
+              )}
+
+              {/* Export */}
+              {rmTests.length > 0 && (
+                <div style={{padding:16,background:"#F8FAFC",borderRadius:10,borderLeft:"4px solid #7C3AED"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#7C3AED",marginBottom:8}}>Export RM Configuration</div>
+                  <div style={{fontSize:12,color:"#666",marginBottom:12}}>{rmTests.length} test(s) for {PLANTS.find(p=>p.id===selectedPlant)?.name || selectedPlant}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>{
+                      const data={plant:selectedPlant,type:"RM_QI_Config",timestamp:new Date().toISOString(),tests:rmTests};
+                      const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+                      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="M3_RM_QI_Config_"+selectedPlant+".json";a.click();URL.revokeObjectURL(url);
+                    }} style={{padding:"8px 14px",background:"#7C3AED",color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                      JSON
+                    </button>
+                    <button onClick={()=>{
+                      const hdr="Code,Description,Material,Type,Result,Max,Min,Target,Dec,UoM,Freq,Note";
+                      const rows=rmTests.map(t=>[t.code,'"'+t.desc+'"','"'+t.material+'"',t.tty,t.tst||"",t.expMax,t.expMin,t.target,t.dec,t.uom,t.freq,'"'+(t.note||"")+'"'].join(","));
+                      const csv="Plant: "+selectedPlant+"\n"+hdr+"\n"+rows.join("\n");
+                      const blob=new Blob([csv],{type:"text/csv"});
+                      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="M3_RM_QI_Config_"+selectedPlant+".csv";a.click();URL.revokeObjectURL(url);
+                    }} style={{padding:"8px 14px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>
+                      CSV
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+                {view==="materials"&&(()=>{
+          const allMats = [...MATERIALS, ...Object.entries(matExtraMaterials).filter(([id]) => !MATERIALS.find(m => m.id == id)).map(([id,d]) => ({id:parseInt(id),cat:d.cat,examples:d.examples,note:d.note,plantSpecific:d.plantSpecific}))];
+          const plantsReceived = Object.keys(matPlantData).length;
+          const riskColor = r => r==="High"?"#DC2626":r==="Medium"?"#D97706":r==="Low"?"#16A34A":"#94A3B8";
+          const riskBg = r => r==="High"?"#FEE2E2":r==="Medium"?"#FEF3C7":r==="Low"?"#DCFCE7":"#F1F5F9";
+          const ynColor = v => v==="Yes"?"#16A34A":v==="No"?"#DC2626":"#94A3B8";
+          const ynBg = v => v==="Yes"?"#DCFCE7":v==="No"?"#FEE2E2":"#F8FAFC";
+          const getVal = (pid, matId, field) => { const pd = matPlantData[pid]; if (!pd) return null; const md = pd[matId]; if (!md) return null; return md[field]; };
+          const getComment = (pid, matId) => { const pd = matPlantData[pid]; if (!pd) return ""; const md = pd[matId]; if (!md) return ""; return md.comment || ""; };
+          const consensus = (matId, field) => {
+            const vals = MAT_PLANTS.map(p => getVal(p, matId, field)).filter(v => v !== null && v !== undefined);
+            if (vals.length === 0) return {label:"No data",color:"#94A3B8",bg:"#F1F5F9"};
+            const yes = vals.filter(v => v === "Yes").length;
+            const no = vals.filter(v => v === "No").length;
+            if (yes === vals.length) {
+              if (matId === 8 || matId === 9) return {label:"✅ IMPLEMENTED IN M3",color:"#16A34A",bg:"#DCFCE7"};
+              return {label:"✅ ALIGNED (Yes)",color:"#16A34A",bg:"#DCFCE7"};
+            }
+            if (no === vals.length) return {label:"✅ ALIGNED (No)",color:"#6B7280",bg:"#F3F4F6"};
+            return {label:"⚠️ DIVERGENT ("+yes+"/"+vals.length+" Yes)",color:"#D97706",bg:"#FEF3C7"};
+          };
+          return (<>
+          <div style={{marginBottom:24}}>
+            <div onDragOver={(e)=>{e.preventDefault();setMatDragOver(true);}} onDragLeave={()=>setMatDragOver(false)}
+              onDrop={(e)=>{e.preventDefault();setMatDragOver(false);const f=e.dataTransfer.files;if(f.length)handleMatFile(f[0]);}}
+              style={{border:"3px dashed "+(matDragOver?BLUE:"#CBD5E1"),borderRadius:16,padding:"28px 24px",textAlign:"center",
+                background:matDragOver?"#EFF6FF":"#FAFBFC",transition:"all .2s",cursor:"pointer"}}
+              onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".xlsx,.xls";inp.onchange=(e)=>{if(e.target.files[0])handleMatFile(e.target.files[0]);};inp.click();}}>
+              <div style={{fontSize:36,marginBottom:8}}>{matDragOver?"📂":"📁"}</div>
+              <div style={{fontWeight:700,fontSize:15,color:NAVY,marginBottom:4}}>Drop Plant Input XLSX here or click to upload</div>
+              <div style={{fontSize:12,color:"#888"}}>Accepts Plant_Input files from GulfGuard (KSA), Nongkhae (TH), El Marqués (MX), Tatui (BR). GGL excluded.</div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
+            {MAT_PLANTS.map(pid => {
+              const has = !!matPlantData[pid];
+              const log = matUploadLog.find(l => l.id === pid);
+              return (<div key={pid} style={{background:"#fff",borderRadius:12,padding:"16px 18px",borderLeft:"4px solid "+(has?GREEN:"#CBD5E1"),boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{fontWeight:700,fontSize:13,color:NAVY}}>{MAT_PLANT_NAMES[pid]}</span>
+                  <span style={{fontSize:18}}>{has?"✅":"⏳"}</span>
+                </div>
+                <div style={{fontSize:11,color:"#888"}}>{has ? <>Received: {log?.date}<br/>By: {log?.by}</> : "Awaiting response"}</div>
+              </div>);
+            })}
+          </div>
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)",marginBottom:24}}>
+            <div style={{background:NAVY,color:"#fff",padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:14}}>{"🔬"} Consolidated Raw Material Matrix — {plantsReceived}/4 Plants Received</span>
+              <span style={{fontSize:11,opacity:.8}}>Scroll right for all plants → Hover for comments</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1100}}>
+                <thead>
+                  <tr style={{background:"#F1F5F9"}}>
+                    <th style={{padding:"10px 12px",textAlign:"left",fontWeight:700,color:"#555",minWidth:50}}>#</th>
+                    <th style={{padding:"10px 12px",textAlign:"left",fontWeight:700,color:"#555",minWidth:180}}>Material Category</th>
+                    <th style={{padding:"10px 12px",textAlign:"left",fontWeight:600,color:"#888",minWidth:150}}>Typical Examples</th>
+                    {MAT_PLANTS.map(pid => (
+                      <th key={pid} colSpan={5} style={{padding:"10px 6px",textAlign:"center",fontWeight:700,color:matPlantData[pid]?NAVY:"#AAA",borderLeft:"2px solid #E2E8F0",fontSize:11}}>
+                        {MAT_PLANT_NAMES[pid]} {matPlantData[pid]?"✅":"⏳"}
+                      </th>
+                    ))}
+                    <th colSpan={3} style={{padding:"10px 6px",textAlign:"center",fontWeight:700,color:"#7C3AED",borderLeft:"3px solid #7C3AED",fontSize:11,background:"#F5F3FF"}}>CONSENSUS</th>
+                  </tr>
+                  <tr style={{background:"#FAFBFC",fontSize:10}}>
+                    <th colSpan={3}/>
+                    {MAT_PLANTS.map(pid => (
+                      <React.Fragment key={pid}>
+                        <th style={{padding:"6px 4px",textAlign:"center",color:"#888",borderLeft:"2px solid #E2E8F0",width:38}}>Used</th>
+                        <th style={{padding:"6px 4px",textAlign:"center",color:"#888",width:38}}>QC</th>
+                        <th style={{padding:"6px 4px",textAlign:"center",color:"#888",width:38}}>M3</th>
+                        <th style={{padding:"6px 4px",textAlign:"center",color:"#888",width:38}}>Lot</th>
+                        <th style={{padding:"6px 4px",textAlign:"center",color:"#888",width:48}}>Risk</th>
+                      </React.Fragment>
+                    ))}
+                    <th style={{padding:"6px 4px",textAlign:"center",color:"#7C3AED",borderLeft:"3px solid #7C3AED",width:50,background:"#F5F3FF"}}>QC</th>
+                    <th style={{padding:"6px 4px",textAlign:"center",color:"#7C3AED",width:50,background:"#F5F3FF"}}>M3</th>
+                    <th style={{padding:"6px 4px",textAlign:"center",color:"#7C3AED",width:50,background:"#F5F3FF"}}>Lot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allMats.map((mat,idx) => {
+                    const cQC = consensus(mat.id,"critical");
+                    const cM3 = consensus(mat.id,"visible");
+                    const cLot = consensus(mat.id,"lotCtrl");
+                    return (
+                    <tr key={mat.id} style={{borderBottom:"1px solid #F1F5F9",background:idx%2===0?"#fff":"#FAFBFC"}}>
+                      <td style={{padding:"8px 12px",fontWeight:600,color:"#999",fontSize:11}}>{mat.id}</td>
+                      <td style={{padding:"8px 12px",fontWeight:600,fontSize:13}}>{mat.cat}{mat.plantSpecific&&<span style={{fontSize:9,marginLeft:6,padding:"1px 6px",borderRadius:8,background:"#FEF3C7",color:"#92400E"}}>+{mat.plantSpecific}</span>}</td>
+                      <td style={{padding:"8px 12px",color:"#888",fontSize:11}}>{mat.examples}</td>
+                      {MAT_PLANTS.map(pid => {
+                        const d = matPlantData[pid];
+                        if (!d) return (<React.Fragment key={pid}>
+                          {[0,1,2,3,4].map(j => <td key={j} style={{padding:"4px",textAlign:"center",color:"#CBD5E1",borderLeft:j===0?"2px solid #E2E8F0":"none"}}>{"—"}</td>)}
+                        </React.Fragment>);
+                        const md = d[mat.id];
+                        const u=md?.used, cr=md?.critical, vi=md?.visible, lo=md?.lotCtrl, ri=md?.risk;
+                        const cm = md?.comment || "";
+                        const cell = (v,isFirst) => (<td style={{padding:"4px",textAlign:"center",borderLeft:isFirst?"2px solid #E2E8F0":"none"}}>
+                          <div className="tooltip" style={{display:"inline-block"}}>
+                            <span style={{fontSize:11,fontWeight:600,color:ynColor(v),background:ynBg(v),padding:"2px 6px",borderRadius:6,display:"inline-block",minWidth:28}}>{v||"—"}</span>
+                            {cm && <div className="tip" style={{minWidth:200,textAlign:"left"}}><strong>{MAT_PLANT_NAMES[pid]}</strong><br/>{cm}</div>}
+                          </div>
+                        </td>);
+                        return (<React.Fragment key={pid}>
+                          {cell(u,true)}
+                          {cell(cr)}
+                          {cell(vi)}
+                          {cell(lo)}
+                          <td style={{padding:"4px",textAlign:"center"}}>
+                            {ri ? <span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:6,color:riskColor(ri),background:riskBg(ri)}}>{ri}</span> : <span style={{color:"#CBD5E1"}}>{"—"}</span>}
+                          </td>
+                        </React.Fragment>);
+                      })}
+                      <td style={{padding:"4px 6px",textAlign:"center",borderLeft:"3px solid #7C3AED",background:"#FDFBFF"}}>
+                        <span style={{fontSize:9,fontWeight:600,color:cQC.color,background:cQC.bg,padding:"2px 5px",borderRadius:6,whiteSpace:"nowrap"}}>{cQC.label.replace(/[✅⚠️] /g,"")}</span>
+                      </td>
+                      <td style={{padding:"4px 6px",textAlign:"center",background:"#FDFBFF"}}>
+                        <span style={{fontSize:9,fontWeight:600,color:cM3.color,background:cM3.bg,padding:"2px 5px",borderRadius:6,whiteSpace:"nowrap"}}>{cM3.label.replace(/[✅⚠️] /g,"")}</span>
+                      </td>
+                      <td style={{padding:"4px 6px",textAlign:"center",background:"#FDFBFF"}}>
+                        <span style={{fontSize:9,fontWeight:600,color:cLot.color,background:cLot.bg,padding:"2px 5px",borderRadius:6,whiteSpace:"nowrap"}}>{cLot.label.replace(/[✅⚠️] /g,"")}</span>
+                      </td>
+                    </tr>);
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{padding:"12px 20px",borderTop:"1px solid #E2E8F0",display:"flex",gap:16,fontSize:11,color:"#666",flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#DCFCE7",border:"1px solid #16A34A",display:"inline-block"}}/> Yes</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#FEE2E2",border:"1px solid #DC2626",display:"inline-block"}}/> No</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#F1F5F9",border:"1px solid #CBD5E1",display:"inline-block"}}/> Pending</span>
+              <span style={{marginLeft:16,fontWeight:700,color:"#DC2626",fontSize:10,padding:"2px 8px",borderRadius:8,background:"#FEE2E2"}}>High Risk</span>
+              <span style={{fontWeight:700,color:"#D97706",fontSize:10,padding:"2px 8px",borderRadius:8,background:"#FEF3C7"}}>Medium Risk</span>
+              <span style={{fontWeight:700,color:"#16A34A",fontSize:10,padding:"2px 8px",borderRadius:8,background:"#DCFCE7"}}>Low Risk</span>
+              <span style={{marginLeft:"auto",fontStyle:"italic",color:"#999"}}>Hover cells for plant comments</span>
+            </div>
+          </div>
+          <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)",marginBottom:24}}>
+            <div style={{background:BLUE,color:"#fff",padding:"14px 20px",fontWeight:700,fontSize:14}}>
+              {"📋"} Tatui (BR) — Detailed Response (André Chieus & Laura Lourenço)
+            </div>
+            <div style={{padding:20}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:14}}>
+                {allMats.filter(m => TATUI_DATA[m.id] && TATUI_DATA[m.id].used === "Yes").map(mat => {
+                  const d = TATUI_DATA[mat.id];
+                  return (<div key={mat.id} style={{border:"1px solid #E2E8F0",borderRadius:10,padding:"14px 16px",borderLeft:"4px solid "+riskColor(d.risk)}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                      <div>
+                        <span style={{fontWeight:700,fontSize:13,color:"#333"}}>{mat.cat}</span>
+                        {mat.plantSpecific && <span style={{fontSize:9,marginLeft:6,padding:"1px 6px",borderRadius:8,background:"#FEF3C7",color:"#92400E"}}>Plant-specific</span>}
+                      </div>
+                      <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:8,color:riskColor(d.risk),background:riskBg(d.risk)}}>{d.risk} Risk</span>
+                    </div>
+                    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                      {[["QC Critical","critical"],["Visible M3","visible"],["Lot Ctrl","lotCtrl"]].map(([label,field]) => (
+                        <span key={field} style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:6,color:d[field]==="Yes"?"#065F46":"#991B1B",background:d[field]==="Yes"?"#D1FAE5":"#FEE2E2"}}>{label}: {d[field]}</span>
+                      ))}
+                    </div>
+                    <div style={{fontSize:11,color:"#666",lineHeight:1.5}}>{d.comment}</div>
+                  </div>);
+                })}
+              </div>
+              <div style={{marginTop:16,padding:12,background:"#FFF8E1",borderRadius:8,fontSize:12,color:"#666",borderLeft:"4px solid #D97706"}}>
+                <strong style={{color:"#92400E"}}>Materials NOT used at Tatui:</strong> {allMats.filter(m => TATUI_DATA[m.id] && TATUI_DATA[m.id].used === "No").map(m => m.cat).join(", ") || "None"}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
+            <div style={{background:"#fff",borderRadius:12,padding:"18px 20px",borderLeft:"4px solid "+NAVY,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase"}}>Total Materials</div>
+              <div style={{fontSize:28,fontWeight:800,color:NAVY}}>{allMats.length}</div>
+              <div style={{fontSize:11,color:"#999"}}>{MATERIALS.filter(m=>!m.plantSpecific).length} standard + {allMats.length - MATERIALS.filter(m=>!m.plantSpecific).length} plant-specific</div>
+            </div>
+            <div style={{background:"#fff",borderRadius:12,padding:"18px 20px",borderLeft:"4px solid "+GREEN,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase"}}>Plants Responded</div>
+              <div style={{fontSize:28,fontWeight:800,color:GREEN}}>{plantsReceived}</div>
+              <div style={{fontSize:11,color:"#999"}}>{plantsReceived}/4 plants (excl. GGL)</div>
+            </div>
+            <div style={{background:"#fff",borderRadius:12,padding:"18px 20px",borderLeft:"4px solid "+RED,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase"}}>High Risk (Tatui)</div>
+              <div style={{fontSize:28,fontWeight:800,color:RED}}>{Object.values(TATUI_DATA).filter(d=>d.risk==="High").length}</div>
+              <div style={{fontSize:11,color:"#999"}}>materials marked High risk</div>
+            </div>
+            <div style={{background:"#fff",borderRadius:12,padding:"18px 20px",borderLeft:"4px solid "+YELLOW,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase"}}>Lot-Controlled (Tatui)</div>
+              <div style={{fontSize:28,fontWeight:800,color:YELLOW}}>{Object.values(TATUI_DATA).filter(d=>d.lotCtrl==="Yes").length}</div>
+              <div style={{fontSize:11,color:"#999"}}>materials for M3 lot control</div>
+            </div>
+          </div>
+          </>);
+        })()}
+
+        <div style={{textAlign:"center",color:"#AAA",fontSize:11,marginTop:28,padding:"14px 0",borderTop:"1px solid #E2E8F0"}}>
+          GlobalCore M3 - Mirror/Wet Coater Quality Launch Program · v{DASHBOARD_VERSION} · Built: {DATA_BUILT}
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
